@@ -289,10 +289,25 @@ def send_to_all(payload: dict, *, ttl: int = 60) -> dict:
             sent += 1
         except WebPushException as e:
             code = getattr(getattr(e, "response", None), "status_code", 0)
-            if code in (404, 410):
+            body = ""
+            try:
+                body = e.response.text  # type: ignore[attr-defined]
+            except Exception:
+                body = str(e)
+            # 404/410 = gone for good. 403 + "do not correspond" / BadJwtToken
+            # means the subscription is bound to an older VAPID public key
+            # than the one we just signed with — equivalent to "gone", and
+            # the only way to recover is to have the client re-subscribe.
+            stale_403 = code == 403 and (
+                "do not correspond" in body
+                or "BadJwtToken" in body
+                or "VapidPubKey" in body
+                or "VAPID public key" in body
+            )
+            if code in (404, 410) or stale_403:
                 dead.append(sub["endpoint"])
             else:
-                errors.append(f"{code}: {str(e)[:160]}")
+                errors.append(f"{code}: {body[:160]}")
         except Exception as e:
             errors.append(str(e)[:200])
     if dead:

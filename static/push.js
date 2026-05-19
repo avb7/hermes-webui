@@ -18,6 +18,10 @@
 
   const STORAGE_ASK_DISMISSED = 'hermes-push-ask-dismissed';
   const STORAGE_LAST_ENDPOINT = 'hermes-push-last-endpoint';
+  // Tracks which VAPID public key the *current* browser-side subscription
+  // was created against. If the server's key rotates (e.g. WebUI state was
+  // wiped) the stored subscription is dead and must be replaced.
+  const STORAGE_LAST_PUBKEY = 'hermes-push-last-pubkey';
 
   // ── Capability checks ───────────────────────────────────────────────────
 
@@ -100,22 +104,52 @@
 
   // ── Subscribe / unsubscribe ────────────────────────────────────────────
 
+  function subKeyMatches(existing, publicKey) {
+    // PushSubscription.options.applicationServerKey is the raw 65-byte
+    // uncompressed P-256 point the browser bound this subscription to.
+    // Compare it byte-for-byte against the current server public key.
+    try {
+      const optKey = existing && existing.options && existing.options.applicationServerKey;
+      if (!optKey) return false;
+      const bytes = new Uint8Array(optKey);
+      const expected = urlBase64ToUint8Array(publicKey);
+      if (bytes.length !== expected.length) return false;
+      for (let i = 0; i < bytes.length; i++) {
+        if (bytes[i] !== expected[i]) return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function ensureSubscribed() {
     if (!pushSupported()) throw new Error('Push not supported on this browser.');
     const reg = await navigator.serviceWorker.ready;
-    const existing = await reg.pushManager.getSubscription();
+    const publicKey = await fetchPublicKey();
+    let existing = await reg.pushManager.getSubscription();
+    // If the existing subscription was created against a different VAPID
+    // public key (server-side state was wiped, or this is an older sub
+    // from before a key rotation), it's dead — the push service will only
+    // accept JWTs signed by the original key, which the server no longer
+    // has. Drop it and start fresh.
+    if (existing && !subKeyMatches(existing, publicKey)) {
+      try { await postUnsubscribe(existing.endpoint); } catch (e) {}
+      try { await existing.unsubscribe(); } catch (e) {}
+      existing = null;
+    }
     if (existing) {
       try { localStorage.setItem(STORAGE_LAST_ENDPOINT, existing.endpoint); } catch (e) {}
-      // Re-post to backend in case server was wiped or this is a fresh device.
+      try { localStorage.setItem(STORAGE_LAST_PUBKEY, publicKey); } catch (e) {}
       try { await postSubscription(existing); } catch (e) {}
       return existing;
     }
-    const publicKey = await fetchPublicKey();
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(publicKey),
     });
     try { localStorage.setItem(STORAGE_LAST_ENDPOINT, sub.endpoint); } catch (e) {}
+    try { localStorage.setItem(STORAGE_LAST_PUBKEY, publicKey); } catch (e) {}
     await postSubscription(sub);
     return sub;
   }
@@ -129,6 +163,7 @@
     try { await sub.unsubscribe(); } catch (e) {}
     try { await postUnsubscribe(endpoint); } catch (e) {}
     try { localStorage.removeItem(STORAGE_LAST_ENDPOINT); } catch (e) {}
+    try { localStorage.removeItem(STORAGE_LAST_PUBKEY); } catch (e) {}
     return true;
   }
 
@@ -202,13 +237,10 @@
     if (!pushSupported()) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) {
-        try { await postSubscription(sub); } catch (e) {}
-      } else {
-        await ensureSubscribed();
-      }
+      // ensureSubscribed already handles key-rotation, re-posts to the
+      // server if the subscription exists, and creates a new one if it
+      // doesn't. Letting it own this path keeps the logic in one place.
+      await ensureSubscribed();
     } catch (e) { /* silent */ }
   }
 
