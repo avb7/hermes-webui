@@ -49,7 +49,12 @@ document.addEventListener('DOMContentLoaded', function () {
       var data = {};
       try { data = await res.json(); } catch (_) {}
       if (res.ok && data.ok) {
-        window.location.href = _safeNextPath();
+        // Use location.replace so the login page doesn't end up in browser
+        // history. On iOS PWA standalone mode, a regular `location.href`
+        // assignment can sometimes pop the user out of the standalone shell
+        // into Safari Web View; replace() stays inside the same browsing
+        // context and keeps the PWA feeling native.
+        window.location.replace(_safeNextPath());
       } else {
         showErr(data.error || invalidPw);
       }

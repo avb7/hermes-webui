@@ -173,6 +173,14 @@
   text-overflow: ellipsis;
 }
 
+/* When the user is on the Browser view, hide the rail-button sidebar slot
+   that would otherwise show #panelBrowser. The 3-column workspace inside
+   #mainBrowser already has its own dedicated chat list on the left, so the
+   extra sidebar column is just visual noise. */
+body.on-browser-view .sidebar {
+  display: none;
+}
+
 /* ---- Responsive ---- */
 
 @media (max-width: 1100px) {

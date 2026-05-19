@@ -299,7 +299,6 @@
     if (!list) return;
     let sessions = [];
     try {
-      const res = await fetch('static/'); // touch to ensure same-origin
       const resp = await fetch('api/sessions', { credentials: 'same-origin' });
       const data = await resp.json();
       sessions = data.sessions || data || [];
@@ -315,26 +314,31 @@
       return;
     }
 
-    const activeId = (window.S && window.S.session && window.S.session.id) || null;
+    // hermes-webui's session row uses `session_id`, not `id`. The active
+    // session id is at S.session.session_id (verified against sessions.js).
+    const activeId =
+      (window.S && window.S.session && window.S.session.session_id) || null;
     list.innerHTML = '';
     sessions.slice(0, 30).forEach(s => {
+      const sid = s.session_id || s.id;
+      if (!sid) return;
       const btn = document.createElement('button');
-      btn.className = 'browser-session-item' + (s.id === activeId ? ' active' : '');
-      btn.textContent = s.title || s.id || 'untitled';
-      btn.title = s.title || s.id || '';
+      btn.className =
+        'browser-session-item' + (sid === activeId ? ' active' : '');
+      btn.textContent = s.title || sid;
+      btn.title = s.title || sid;
       btn.addEventListener('click', () => {
-        if (typeof window.setActiveSession === 'function') {
-          window.setActiveSession(s.id);
-        } else if (typeof window.loadSession === 'function') {
-          window.loadSession(s.id);
+        if (typeof window.loadSession === 'function') {
+          window.loadSession(sid);
         } else {
-          location.href = 'session/' + s.id;
+          location.href = 'session/' + sid;
         }
-        // After switching, refresh both this list and the terminal binding
+        // Re-render after the session load settles so the active highlight
+        // and terminal binding catch up.
         setTimeout(() => {
           loadBrowserSessions();
           initBrowserTerminal();
-        }, 50);
+        }, 250);
       });
       list.appendChild(btn);
     });
@@ -354,7 +358,9 @@
   };
 
   function _ttySid() {
-    return (window.S && window.S.session && window.S.session.id) || null;
+    return (
+      (window.S && window.S.session && window.S.session.session_id) || null
+    );
   }
 
   function _ttyEls() {
@@ -526,12 +532,20 @@
   if (typeof _origSwitchPanel === 'function') {
     window.switchPanel = async function (name, opts) {
       const result = await _origSwitchPanel(name, opts);
+      // Toggle a body marker so CSS can hide the rail-button sidebar
+      // (panel-view #panelBrowser) when on Browser view — that whole
+      // column is redundant because the workspace has its own left aside.
+      document.body.classList.toggle('on-browser-view', name === 'browser');
       if (name === 'browser') {
         loadBrowserSessions();
         initBrowserTerminal();
       }
       return result;
     };
+  }
+  // Apply once at boot in case the user reloaded while already on Browser.
+  if (window.location.hash === '#browser' || document.body.classList.contains('on-browser-view')) {
+    document.body.classList.add('on-browser-view');
   }
 
   // ---- Expose globals + init --------------------------------------------
