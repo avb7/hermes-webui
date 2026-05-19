@@ -207,14 +207,25 @@
     const url = 'api/terminals/output?terminal_id=' + encodeURIComponent(tab.terminal_id);
     const sse = new EventSource(url, { withCredentials: true });
     tab.sse = sse;
-    sse.addEventListener('terminal_data', ev => {
+    // Backend emits `output` events with {text} (see api/terminal.py
+    // _reader_loop), NOT `terminal_data` with {data}. The previous attempts
+    // listened for the wrong event name, so the SSE connection was open and
+    // streaming but the handler ignored every message — leaving the panel
+    // visually empty.
+    sse.addEventListener('output', ev => {
       try {
         const payload = JSON.parse(ev.data);
-        if (payload.data) term.write(payload.data);
+        const text = payload && (payload.text || payload.data);
+        if (text) term.write(text);
       } catch (e) {}
     });
     sse.addEventListener('terminal_closed', () => {
       try { term.write('\r\n\x1b[33m[terminal exited]\x1b[0m\r\n'); } catch (e) {}
+    });
+    sse.addEventListener('terminal_error', ev => {
+      let msg = 'terminal error';
+      try { msg = (JSON.parse(ev.data) || {}).error || msg; } catch (e) {}
+      try { term.write('\r\n\x1b[31m[' + msg + ']\x1b[0m\r\n'); } catch (e) {}
     });
 
     if (window.ResizeObserver) {
