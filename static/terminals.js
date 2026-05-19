@@ -126,9 +126,27 @@
     return el;
   }
 
+  function _twoFrames() {
+    // Wait for the browser to complete layout. Without this, term.open()
+    // runs against a 0×0 container (the panel was just toggled visible)
+    // and xterm renders into the void.
+    return new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+  }
+
   async function _bootInstance(tab) {
     if (tab.term) return;
     const container = _ensureInstanceContainer(tab.terminal_id);
+    // Make sure the container is the visible (active) one BEFORE we
+    // initialize xterm — otherwise its canvas computes zero dimensions
+    // and never grows back. _showActiveInstance() handles toggling other
+    // siblings off and our target on.
+    if (state.activeId === tab.terminal_id) {
+      _showActiveInstance();
+    }
+    // Give the browser a chance to paint the visibility change.
+    await _twoFrames();
 
     const term = new window.Terminal({
       cursorBlink: true,
@@ -142,6 +160,8 @@
     if (fit) term.loadAddon(fit);
     if (window.WebLinksAddon) term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
     term.open(container);
+    // One more frame so xterm can populate its viewport before we fit.
+    await _twoFrames();
     if (fit) {
       try { fit.fit(); } catch (e) {}
     }
@@ -223,10 +243,12 @@
     });
     const tab = _activeTab();
     if (tab && tab.fitAddon) {
-      setTimeout(() => {
+      // Double-rAF: wait for the visibility toggle to actually take effect
+      // in layout before refitting.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
         try { tab.fitAddon.fit(); } catch (e) {}
         _resizeRemote(tab);
-      }, 50);
+      }));
     }
   }
 
@@ -250,8 +272,10 @@
     state.activeId = tab.terminal_id;
     saveState();
     renderTabs();
+    // Pre-create the container so _bootInstance's _showActiveInstance call
+    // finds the right element to mark .active.
+    _ensureInstanceContainer(tab.terminal_id);
     await _bootInstance(tab);
-    _showActiveInstance();
     if (tab.term) tab.term.focus();
   }
 
@@ -298,7 +322,7 @@
     return !!(p && !p.hidden);
   }
 
-  function setOpen(open) {
+  async function setOpen(open) {
     const p = _panel();
     if (!p) return;
     p.hidden = !open;
@@ -306,14 +330,23 @@
     if (open) {
       const w = parseInt(localStorage.getItem(STORAGE_WIDTH) || '', 10);
       if (w > 0 && !isMaximized()) p.style.width = w + 'px';
-      // Boot any terminals from the persisted tab list that don't have a
-      // runtime term instance yet — lazy-create on first open.
-      state.tabs.forEach(t => { if (!t.term) _bootInstance(t); });
+      // Wait for the panel to be laid out (the `hidden` attribute change
+      // hasn't propagated to the layout tree yet) before booting any
+      // xterm.js instances — they need real container dimensions.
+      await _twoFrames();
       if (state.tabs.length === 0) {
-        // First open ever: spawn one terminal to get the user going.
+        // First open ever — spawn a terminal.
         addTab();
       } else {
-        renderAll();
+        renderTabs();
+        for (const t of state.tabs) {
+          if (!t.term) {
+            // sequential, awaited so each terminal gets a real layout pass
+            // eslint-disable-next-line no-await-in-loop
+            await _bootInstance(t);
+          }
+        }
+        _showActiveInstance();
       }
     }
     try { localStorage.setItem(STORAGE_OPEN, open ? '1' : '0'); } catch (e) {}
