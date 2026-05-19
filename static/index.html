@@ -1302,8 +1302,12 @@
   <button class="panel-edge-toggle browser-panel-edge-toggle has-tooltip has-tooltip--left" id="btnBrowserPanelEdgeToggle" type="button" onclick="toggleBrowserPanel(true)" data-tooltip="Show browser" aria-label="Show browser" aria-expanded="false">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
   </button>
-  <!-- Terminal panel (fork-only) — Cursor/VSCode-style multi-terminal dock. -->
-  <button class="panel-edge-toggle terminal-panel-edge-toggle has-tooltip has-tooltip--left" id="btnTerminalPanelEdgeToggle" type="button" onclick="toggleTerminalPanel(true)" data-tooltip="Show terminals" aria-label="Show terminals" aria-expanded="false">
+  <!-- Terminal edge toggle (fork-only). Reuses hermes-webui's existing
+       composer-bottom terminal (terminal.js / toggleComposerTerminal),
+       which has proven xterm.js wiring + PTY plumbing. Building our own
+       multi-terminal panel was a layout-fight; this just adds a third
+       toggle to match the workspace + browser pattern visually. -->
+  <button class="panel-edge-toggle terminal-panel-edge-toggle has-tooltip has-tooltip--left" id="btnTerminalPanelEdgeToggle" type="button" onclick="(typeof toggleComposerTerminal==='function') && toggleComposerTerminal()" data-tooltip="Toggle terminal" aria-label="Toggle terminal" aria-expanded="false">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
   </button>
   <aside class="browserpanel" id="browserPanel" hidden>
@@ -1323,19 +1327,6 @@
       <button class="browser-url-btn" onclick="browserOpenInDesktopFirefox()" title="Copy URL and open noVNC desktop (for sites that block iframing — Google, GitHub, etc.)" aria-label="Open in Firefox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
     </div>
     <div class="browser-iframe-wrap" id="browserIframeWrap"></div>
-  </aside>
-  <aside class="terminalpanel" id="terminalPanel" hidden>
-    <div class="resize-handle" id="terminalPanelResize"></div>
-    <div class="terminalpanel-header">
-      <div class="terminalpanel-tabs" id="terminalTabs"></div>
-      <div class="terminalpanel-actions">
-        <button class="browser-url-btn" onclick="terminalAddTab()" id="terminalAddBtn" title="New terminal" aria-label="New terminal"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-        <button class="browser-url-btn" onclick="terminalMaximizeToggle()" id="terminalMaximizeBtn" title="Maximize" aria-label="Maximize"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
-        <button class="browser-url-btn" onclick="toggleTerminalPanel(false)" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-      </div>
-    </div>
-    <div class="terminalpanel-body" id="terminalBody"></div>
-    <div class="terminalpanel-status" id="terminalStatus"></div>
   </aside>
 </div>
 <div class="onboarding-overlay" id="onboardingOverlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
@@ -1387,7 +1378,6 @@
 <script src="static/messages.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/browser.js?v=__WEBUI_VERSION__" defer></script>
-<script src="static/terminals.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/onboarding.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/boot.js?v=__WEBUI_VERSION__" defer></script>
 
