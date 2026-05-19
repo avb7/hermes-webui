@@ -289,61 +289,6 @@
     }
   }
 
-  // ---- Sessions list (left aside) ---------------------------------------
-  // Compact session list that mirrors the chat sidebar but stays visible
-  // when the user is in Browser view. Click switches the active session
-  // (reusing the existing chat machinery if available).
-
-  async function loadBrowserSessions() {
-    const list = document.getElementById('browserSessionsList');
-    if (!list) return;
-    let sessions = [];
-    try {
-      const resp = await fetch('api/sessions', { credentials: 'same-origin' });
-      const data = await resp.json();
-      sessions = data.sessions || data || [];
-    } catch (e) {
-      list.innerHTML =
-        '<div class="browser-session-empty">Could not load sessions.</div>';
-      return;
-    }
-
-    if (!sessions.length) {
-      list.innerHTML =
-        '<div class="browser-session-empty">No conversations yet.</div>';
-      return;
-    }
-
-    // hermes-webui's session row uses `session_id`, not `id`. The active
-    // session id is at S.session.session_id (verified against sessions.js).
-    const activeId =
-      (window.S && window.S.session && window.S.session.session_id) || null;
-    list.innerHTML = '';
-    sessions.slice(0, 30).forEach(s => {
-      const sid = s.session_id || s.id;
-      if (!sid) return;
-      const btn = document.createElement('button');
-      btn.className =
-        'browser-session-item' + (sid === activeId ? ' active' : '');
-      btn.textContent = s.title || sid;
-      btn.title = s.title || sid;
-      btn.addEventListener('click', () => {
-        if (typeof window.loadSession === 'function') {
-          window.loadSession(sid);
-        } else {
-          location.href = 'session/' + sid;
-        }
-        // Re-render after the session load settles so the active highlight
-        // and terminal binding catch up.
-        setTimeout(() => {
-          loadBrowserSessions();
-          initBrowserTerminal();
-        }, 250);
-      });
-      list.appendChild(btn);
-    });
-  }
-
   // ---- Terminal (right aside) -------------------------------------------
   // Uses the existing /api/terminal/* endpoints (start, input, resize,
   // close + SSE output stream). Each chat session has at most one terminal;
@@ -520,10 +465,6 @@
     initBrowserTerminal({ restart: true });
   }
 
-  function browserSessionsRefresh() {
-    loadBrowserSessions();
-  }
-
   // ---- Wire panel-switch hook -------------------------------------------
   // Only initialize sessions + terminal when the Browser panel actually
   // becomes active, and tear down terminal SSE when the user leaves.
@@ -532,20 +473,35 @@
   if (typeof _origSwitchPanel === 'function') {
     window.switchPanel = async function (name, opts) {
       const result = await _origSwitchPanel(name, opts);
-      // Toggle a body marker so CSS can hide the rail-button sidebar
-      // (panel-view #panelBrowser) when on Browser view — that whole
-      // column is redundant because the workspace has its own left aside.
       document.body.classList.toggle('on-browser-view', name === 'browser');
       if (name === 'browser') {
-        loadBrowserSessions();
+        // Force the sidebar panel-view to be the chat session list so the
+        // user can switch sessions even though the rail-button stays on
+        // Browser. The original switchPanel only activates the matching
+        // panel-view; we hide #panelBrowser via CSS and promote #panelChat
+        // to active here.
+        const panels = document.querySelectorAll('.panel-view');
+        panels.forEach(p => p.classList.remove('active'));
+        const chatPanel = document.getElementById('panelChat');
+        if (chatPanel) chatPanel.classList.add('active');
         initBrowserTerminal();
       }
       return result;
     };
   }
-  // Apply once at boot in case the user reloaded while already on Browser.
-  if (window.location.hash === '#browser' || document.body.classList.contains('on-browser-view')) {
-    document.body.classList.add('on-browser-view');
+
+  // Re-bind the terminal whenever the active chat session changes, so
+  // clicking a session in the sidebar (which calls loadSession) makes the
+  // terminal pane attach to the right PTY.
+  const _origLoadSession = window.loadSession;
+  if (typeof _origLoadSession === 'function') {
+    window.loadSession = async function (sid) {
+      const result = await _origLoadSession(sid);
+      if (document.body.classList.contains('on-browser-view')) {
+        setTimeout(() => initBrowserTerminal(), 100);
+      }
+      return result;
+    };
   }
 
   // ---- Expose globals + init --------------------------------------------
@@ -555,7 +511,6 @@
   window.browserReload = reloadActiveTab;
   window.browserPopOut = popOutActiveTab;
   window.browserOpenInDesktopFirefox = openInDesktopFirefox;
-  window.browserSessionsRefresh = browserSessionsRefresh;
   window.browserTerminalRestart = browserTerminalRestart;
 
   if (document.readyState === 'loading') {

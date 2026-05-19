@@ -732,17 +732,14 @@
       </div>
     </div>
     </div><!-- /#mainChat -->
-    <!-- Browser main view (fork-only) — 3-column workspace:
-         left: chat sessions list, center: browser, right: terminal. -->
+    <!-- Browser main view (fork-only) — 2-column workspace:
+         middle: browser iframe, right: terminal.
+         The full chat (#mainChat with messages + composer) is shown
+         alongside this view via a CSS override (style.css: showing-browser),
+         so the workspace looks 3-column to the user but the chat
+         column is the real chat, not a clone. -->
     <div id="mainBrowser" class="main-view">
       <div class="browser-workspace">
-        <aside class="browser-aside browser-aside-left">
-          <div class="browser-aside-head">
-            <span>Chat</span>
-            <button class="browser-aside-btn" onclick="browserSessionsRefresh()" title="Refresh sessions"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
-          </div>
-          <div id="browserSessionsList" class="browser-sessions-list"></div>
-        </aside>
         <div class="browser-center">
           <div class="browser-tabs" id="browserTabs"></div>
           <div class="browser-url-bar">
