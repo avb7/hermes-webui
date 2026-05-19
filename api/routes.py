@@ -4141,6 +4141,12 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/terminal/output":
         return _handle_terminal_output(handler, parsed)
 
+    # Fork-only multi-terminal SSE + list.
+    if parsed.path == "/api/terminals/output":
+        return _handle_terminals_output(handler, parsed)
+    if parsed.path == "/api/terminals/list":
+        return _handle_terminals_list(handler, parsed)
+
     if parsed.path == '/api/sessions/gateway/stream':
         return _handle_gateway_sse_stream(handler, parsed)
 
@@ -5155,6 +5161,21 @@ def handle_post(handler, parsed) -> bool:
 
     if parsed.path == "/api/terminal/close":
         return _handle_terminal_close(handler, body)
+
+    # /api/terminals/* (plural) — fork-only multi-terminal API. Unlike the
+    # singular endpoints above which are keyed by chat session_id and limit
+    # one terminal per chat, the plural endpoints take a frontend-generated
+    # `terminal_id` so a user can run many terminals concurrently (Cursor /
+    # VSCode style). They reuse the same TerminalSession machinery in
+    # api/terminal.py; only the dict-key is different (any string).
+    if parsed.path == "/api/terminals/start":
+        return _handle_terminals_start(handler, body)
+    if parsed.path == "/api/terminals/input":
+        return _handle_terminals_input(handler, body)
+    if parsed.path == "/api/terminals/resize":
+        return _handle_terminals_resize(handler, body)
+    if parsed.path == "/api/terminals/close":
+        return _handle_terminals_close(handler, body)
 
     # ── Cron API (POST) ──
     # See GET-side comment above: wrap in cron_profile_context so writes go
@@ -6265,6 +6286,154 @@ def _handle_terminal_close(handler, body):
         return j(handler, {"ok": True, "closed": closed})
     except ValueError as e:
         return bad(handler, str(e), 400)
+
+
+def _multi_terminal_workspace(raw):
+    """Resolve a workspace path for the fork-only multi-terminal API.
+    Falls back to /root/workspace, then to the user's $HOME. Validates the
+    final path with resolve_trusted_workspace just like the chat-bound
+    terminal path does.
+    """
+    candidates = []
+    if raw:
+        candidates.append(str(raw))
+    candidates += ["/root/workspace", "/workspace", str(Path.home())]
+    for c in candidates:
+        try:
+            ws = resolve_trusted_workspace(c)
+        except Exception:
+            continue
+        if Path(ws).is_dir():
+            return ws
+    raise ValueError("could not resolve a valid workspace for the terminal")
+
+
+def _multi_terminal_id(body_or_query):
+    tid = str(body_or_query.get("terminal_id", "")).strip()
+    if not tid:
+        raise ValueError("terminal_id required")
+    # Cheap shape check: 8–64 chars, ascii alnum + dash + underscore.
+    if len(tid) < 4 or len(tid) > 64 or not all(
+        c.isalnum() or c in "-_" for c in tid
+    ):
+        raise ValueError("terminal_id has an unsupported shape")
+    return tid
+
+
+def _handle_terminals_start(handler, body):
+    try:
+        tid = _multi_terminal_id(body)
+        workspace = _multi_terminal_workspace(body.get("workspace"))
+        from api.terminal import start_terminal
+        term = start_terminal(
+            tid,
+            workspace,
+            rows=int(body.get("rows") or 24),
+            cols=int(body.get("cols") or 80),
+            restart=bool(body.get("restart")),
+        )
+        return j(
+            handler,
+            {
+                "ok": True,
+                "terminal_id": tid,
+                "workspace": term.workspace,
+                "running": term.is_alive(),
+            },
+        )
+    except KeyError as e:
+        return bad(handler, str(e), 404)
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, _sanitize_error(e), 500)
+
+
+def _handle_terminals_input(handler, body):
+    try:
+        tid = _multi_terminal_id(body)
+        data = str(body.get("data", ""))
+        if len(data) > 8192:
+            return bad(handler, "input too large", 413)
+        from api.terminal import write_terminal
+        write_terminal(tid, data)
+        return j(handler, {"ok": True})
+    except KeyError as e:
+        return bad(handler, str(e), 404)
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, _sanitize_error(e), 500)
+
+
+def _handle_terminals_resize(handler, body):
+    try:
+        tid = _multi_terminal_id(body)
+        from api.terminal import resize_terminal
+        resize_terminal(
+            tid,
+            rows=int(body.get("rows") or 24),
+            cols=int(body.get("cols") or 80),
+        )
+        return j(handler, {"ok": True})
+    except KeyError as e:
+        return bad(handler, str(e), 404)
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, _sanitize_error(e), 500)
+
+
+def _handle_terminals_close(handler, body):
+    try:
+        tid = _multi_terminal_id(body)
+        from api.terminal import close_terminal
+        closed = close_terminal(tid)
+        return j(handler, {"ok": True, "closed": closed})
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+
+
+def _handle_terminals_list(handler, parsed):
+    from api.terminal import list_terminals
+    return j(handler, {"terminals": list_terminals()})
+
+
+def _handle_terminals_output(handler, parsed):
+    qs = parse_qs(parsed.query)
+    tid = qs.get("terminal_id", [""])[0]
+    if not tid or len(tid) < 4 or len(tid) > 64 or not all(
+        c.isalnum() or c in "-_" for c in tid
+    ):
+        return bad(handler, "terminal_id required")
+    from api.terminal import get_terminal
+    term = get_terminal(tid)
+    if term is None:
+        return j(handler, {"error": "terminal not running"}, status=404)
+
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.send_header("X-Accel-Buffering", "no")
+    handler.send_header("Connection", "keep-alive")
+    handler.end_headers()
+    try:
+        while True:
+            try:
+                event, data = term.output.get(timeout=_SSE_HEARTBEAT_INTERVAL_SECONDS)
+            except queue.Empty:
+                handler.wfile.write(b": terminal heartbeat\n\n")
+                handler.wfile.flush()
+                if term.closed.is_set() and term.output.empty():
+                    _sse(handler, "terminal_closed", {"exit_code": term.proc.poll()})
+                    break
+                continue
+            _sse(handler, event, data)
+            if event in ("terminal_closed", "terminal_error"):
+                break
+    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+        pass
+    return True
 
 
 def _handle_terminal_output(handler, parsed):

@@ -220,6 +220,25 @@ def resize_terminal(session_id: str, rows: int, cols: int) -> None:
     _set_size(term, rows, cols)
 
 
+def list_terminals() -> list[dict]:
+    """Return a snapshot of every live terminal. Each row: {id, workspace,
+    rows, cols, alive}. Used by the fork-only /api/terminals/list endpoint
+    so the frontend can recover its tab list after a reload.
+    """
+    out: list[dict] = []
+    with _LOCK:
+        snapshot = list(_TERMINALS.items())
+    for sid, term in snapshot:
+        out.append({
+            "id": sid,
+            "workspace": term.workspace,
+            "rows": term.rows,
+            "cols": term.cols,
+            "alive": term.is_alive(),
+        })
+    return out
+
+
 def close_terminal(session_id: str) -> bool:
     sid = str(session_id or "")
     with _LOCK:

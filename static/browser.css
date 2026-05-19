@@ -219,35 +219,52 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* ---- Edge toggle (shown when panel is hidden) ------------------------ */
-/* Positioned just below the workspace edge toggle. Disappears once the
-   panel is open. */
+/* ---- Edge toggles (shared between browser + terminal) ----------------
+   Match the visual style of the existing workspace edge toggle (circular
+   pill, fixed right, mid-height) so all three feel like one set. They
+   each get their own top-offset so they don't overlap. */
 
-.browser-panel-edge-toggle {
+.panel-edge-toggle {
   position: fixed;
-  right: 0;
-  top: 50%;
-  transform: translateY(8px);
-  width: 22px;
-  height: 36px;
-  display: flex;
+  right: 10px;
+  width: 34px;
+  height: 44px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--panel, var(--bg));
+  border: 1px solid var(--border2, var(--border));
+  border-radius: 999px;
+  background: var(--surface, var(--panel));
   color: var(--muted);
-  border: 1px solid var(--border);
-  border-right: none;
-  border-radius: 4px 0 0 4px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
   cursor: pointer;
-  z-index: 20;
+  z-index: 120;
+  transition: opacity .18s ease, color .15s ease,
+    background .15s ease, border-color .15s ease;
 }
 
-.browser-panel-edge-toggle:hover {
+.panel-edge-toggle:hover {
   color: var(--text);
-  background: var(--input-bg);
+  background: var(--hover-bg, var(--input-bg));
+  border-color: var(--accent, var(--border));
+}
+
+/* Stack the three toggles vertically. Workspace owns the centerline; we
+   place browser ~56px below and terminal ~56px above so they all fit
+   without crowding. */
+.browser-panel-edge-toggle {
+  top: calc(50% + 56px);
+  transform: translateY(-50%);
+}
+.terminal-panel-edge-toggle {
+  top: calc(50% - 56px);
+  transform: translateY(-50%);
 }
 
 body.browser-panel-open .browser-panel-edge-toggle {
+  display: none;
+}
+body.terminal-panel-open .terminal-panel-edge-toggle {
   display: none;
 }
 
@@ -277,7 +294,8 @@ body.browser-panel-maximized .browserpanel .resize-handle {
 /* On narrow screens, the panel takes the whole viewport when open. */
 
 @media (max-width: 640px) {
-  .browserpanel {
+  .browserpanel,
+  .terminalpanel {
     position: fixed;
     inset: 0;
     width: auto;
@@ -285,11 +303,122 @@ body.browser-panel-maximized .browserpanel .resize-handle {
     z-index: 100;
     border-left: none;
   }
-  .browserpanel .resize-handle {
+  .browserpanel .resize-handle,
+  .terminalpanel .resize-handle {
     display: none;
   }
-  .browser-panel-edge-toggle {
-    width: 28px;
-    height: 44px;
-  }
+}
+
+/* ============================================================
+   Terminal panel — multi-tab xterm.js dock, mirrors browserpanel
+   ============================================================ */
+
+.terminalpanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 560px;
+  min-width: 360px;
+  max-width: 90vw;
+  background: #0a0a0e;
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.terminalpanel[hidden] { display: none; }
+
+.terminalpanel .resize-handle {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 6px; margin-left: -3px;
+  cursor: ew-resize; z-index: 5;
+}
+.terminalpanel .resize-handle:hover,
+.terminalpanel .resize-handle:active {
+  background: var(--accent, rgba(127, 127, 127, 0.2));
+}
+
+.terminalpanel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 36px;
+  background: var(--panel, var(--bg));
+}
+
+.terminalpanel-tabs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  min-width: 0;
+}
+
+.terminalpanel-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Reuse .browser-tab styling for terminal tabs — same visual language. */
+.terminalpanel-tabs .browser-tab { max-width: 180px; }
+.terminalpanel-tabs .browser-tab-title { max-width: 140px; }
+
+.terminalpanel-body {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background: #0a0a0e;
+  overflow: hidden;
+}
+
+/* Each terminal-instance lives in its own absolute-positioned panel; we
+   show only the .active one. */
+.terminal-instance {
+  position: absolute;
+  inset: 0;
+  padding: 6px 0 0 6px;
+  display: none;
+}
+.terminal-instance.active {
+  display: block;
+}
+.terminal-instance .xterm {
+  height: 100%;
+  width: 100%;
+}
+
+.terminalpanel-status {
+  padding: 4px 10px;
+  font-size: 10px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  background: var(--panel, var(--bg));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+body.terminal-panel-maximized .sidebar,
+body.terminal-panel-maximized main.main,
+body.terminal-panel-maximized .rightpanel,
+body.terminal-panel-maximized .browserpanel,
+body.terminal-panel-maximized .workspace-panel-edge-toggle,
+body.terminal-panel-maximized .browser-panel-edge-toggle {
+  display: none !important;
+}
+body.terminal-panel-maximized .terminalpanel {
+  flex: 1; width: auto; max-width: none; border-left: none;
+}
+body.terminal-panel-maximized .terminalpanel .resize-handle {
+  display: none;
 }
