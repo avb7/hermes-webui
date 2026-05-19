@@ -2220,6 +2220,9 @@ from api.models import (
     import_cli_session,
     get_cli_sessions,
     get_cli_session_messages,
+    get_state_db_session_messages,
+    get_state_db_session_summary,
+    merge_session_messages_append_only,
     ensure_cron_project,
     is_cron_session,
 )
@@ -3665,8 +3668,17 @@ def handle_get(handler, parsed) -> bool:
             cli_meta = _lookup_cli_session_metadata(sid) if _session_requires_cli_metadata_lookup(s) else {}
             is_messaging_session = _is_messaging_session_record(s) or _is_messaging_session_record(cli_meta)
             cli_messages = []
+            state_db_messages = []
+            state_db_summary = {}
             if is_messaging_session:
                 cli_messages = get_cli_session_messages(sid)
+            elif load_messages:
+                state_db_messages = get_state_db_session_messages(sid)
+            elif not is_messaging_session:
+                # Metadata-only callers (frontend refresh polling) only need a
+                # cheap staleness signal. Avoid full transcript materialization
+                # on the steady-state polling path.
+                state_db_summary = get_state_db_session_summary(sid)
             _t2 = _time.monotonic()
             effective_model = (
                 _resolve_effective_session_model_for_display(s)
@@ -3690,9 +3702,32 @@ def handle_get(handler, parsed) -> bool:
                     # them chronologically and dedupe exact repeats.
                     _all_msgs = _merged_session_messages_for_display(s, cli_messages)
                 else:
-                    _all_msgs = s.messages
+                    _all_msgs = merge_session_messages_append_only(s.messages, state_db_messages)
             else:
-                _all_msgs = []
+                if is_messaging_session and cli_messages:
+                    sidecar_messages = getattr(s, "messages", []) or []
+                    _all_msgs = merge_session_messages_append_only(cli_messages, sidecar_messages)
+                else:
+                    _all_msgs = merge_session_messages_append_only(getattr(s, "messages", []) or [], state_db_messages)
+            if not load_messages and state_db_summary:
+                sidecar_messages = getattr(s, "messages", []) or []
+                sidecar_count = len(sidecar_messages)
+                try:
+                    sidecar_last = max(
+                        float((m or {}).get("timestamp") or 0)
+                        for m in sidecar_messages
+                        if isinstance(m, dict)
+                    ) if sidecar_messages else 0
+                except (TypeError, ValueError):
+                    sidecar_last = 0
+                state_count = int(state_db_summary.get("message_count") or 0)
+                state_last = float(state_db_summary.get("last_message_at") or 0)
+                _all_msgs = sidecar_messages
+                _summary_message_count = max(sidecar_count, state_count)
+                _summary_last_message_at = max(sidecar_last, state_last)
+            else:
+                _summary_message_count = None
+                _summary_last_message_at = None
             if load_messages:
                 if msg_before is not None:
                     # Scroll-to-top paging: msg_before is a 0-based index into
@@ -3708,7 +3743,7 @@ def handle_get(handler, parsed) -> bool:
                 else:
                     _truncated_msgs = _all_msgs
             else:
-                _truncated_msgs = _all_msgs
+                _truncated_msgs = []
             # Resolve effective context_length with model-metadata fallback so
             # older sessions (pre-#1318) that have context_length=0 persisted
             # still render a meaningful indicator on load.  Mirrors the
@@ -3748,8 +3783,20 @@ def handle_get(handler, parsed) -> bool:
                 # messages already carry per-message tool metadata. Avoid sending
                 # the full historical list with a small tail window.
                 _session_tool_calls = []
+            _merged_message_count = _summary_message_count if _summary_message_count is not None else len(_all_msgs)
+            _merged_last_message_at = _summary_last_message_at if _summary_last_message_at is not None else 0
+            if _summary_last_message_at is None and _all_msgs:
+                try:
+                    _merged_last_message_at = max(
+                        float((m or {}).get("timestamp") or 0)
+                        for m in _all_msgs
+                        if isinstance(m, dict)
+                    )
+                except (TypeError, ValueError):
+                    _merged_last_message_at = 0
             raw = s.compact() | {
                 "messages": _truncated_msgs,
+                "message_count": _merged_message_count,
                 "tool_calls": _session_tool_calls,
                 "active_stream_id": getattr(s, "active_stream_id", None),
                 "pending_user_message": getattr(s, "pending_user_message", None),
@@ -3769,6 +3816,15 @@ def handle_get(handler, parsed) -> bool:
                         journal,
                         active=bool(getattr(s, "active_stream_id", None)),
                     )
+            if _merged_last_message_at:
+                raw["last_message_at"] = max(
+                    float(raw.get("last_message_at") or 0),
+                    _merged_last_message_at,
+                )
+                raw["updated_at"] = max(
+                    float(raw.get("updated_at") or 0),
+                    _merged_last_message_at,
+                )
             if cli_meta and _is_messaging_session_record(cli_meta):
                 raw = _merge_cli_sidebar_metadata(raw, cli_meta)
             # Signal to the frontend that older messages were omitted.
@@ -8059,6 +8115,18 @@ def _start_chat_stream_for_session(
     return response
 
 
+def _runtime_adapter_goal_action(goal_args: str) -> str:
+    """Return the bounded RuntimeAdapter goal action for WebUI /goal args."""
+    action = str(goal_args or "").strip().lower()
+    if not action or action == "status":
+        return "status"
+    if action in ("pause", "resume"):
+        return action
+    if action in ("clear", "stop", "done"):
+        return "clear"
+    return "set"
+
+
 def _handle_goal_command(handler, body):
     """Handle WebUI /goal command controls and optional kickoff stream."""
     try:
@@ -8131,12 +8199,30 @@ def _handle_goal_command(handler, body):
         )
         previous_goal_state = goal_state_snapshot(s.session_id, profile_home=profile_home)
 
-    payload = goal_command_payload(
-        s.session_id,
-        goal_args,
-        stream_running=stream_running,
-        profile_home=profile_home,
-    )
+    from api.runtime_adapter import LegacyJournalRuntimeAdapter, runtime_adapter_enabled
+
+    def _legacy_goal_update(session_id: str, _action: str, text: str) -> dict:
+        return goal_command_payload(
+            session_id,
+            text,
+            stream_running=stream_running,
+            profile_home=profile_home,
+        )
+
+    goal_adapter_action = _runtime_adapter_goal_action(goal_args)
+    if runtime_adapter_enabled():
+        adapter = LegacyJournalRuntimeAdapter(goal_delegate=_legacy_goal_update)
+        control_result = adapter.update_goal(
+            s.session_id,
+            goal_adapter_action,
+            goal_args,
+        )
+        # Slice 3c keeps the adapter as a structural seam only.  Preserve the
+        # public /api/goal response by passing through the legacy payload rather
+        # than deriving HTTP behavior from ControlResult.accepted/status.
+        payload = dict(control_result.payload)
+    else:
+        payload = _legacy_goal_update(s.session_id, goal_adapter_action, goal_args)
     if not payload.get("ok", True):
         status = 409 if payload.get("error") == "agent_running" else 400
         return j(handler, payload, status=status)
@@ -8419,6 +8505,7 @@ def _handle_chat_sync(handler, body):
             )
             from api.streaming import (
                 _merge_display_messages_after_agent_result,
+                _restore_display_reasoning_metadata,
                 _restore_reasoning_metadata,
                 _sanitize_messages_for_api,
                 _context_messages_for_new_turn,
@@ -8471,7 +8558,7 @@ def _handle_chat_sync(handler, body):
         s.messages = _merge_display_messages_after_agent_result(
             _previous_messages,
             _previous_context_messages,
-            _restore_reasoning_metadata(_previous_messages, _result_messages),
+            _restore_display_reasoning_metadata(_previous_messages, _result_messages),
             msg,
         )
         # Only auto-generate title when still default; preserves user renames
