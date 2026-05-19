@@ -240,7 +240,8 @@
       <div class="skills-search sidebar-search"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="skillsSearch" placeholder="Search skills..." data-i18n-placeholder="search_skills" oninput="filterSkills()"></div>
       <div class="skills-list" id="skillsList"><div style="padding:12px;color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
     </div>
-    <!-- Browser panel — fork-only: minimal in-app browser for sandbox-local apps. -->
+    <!-- Browser panel — fork-only: sidebar = bookmarks/tabs list,
+         the real UI (tab strip + URL bar + iframe) lives in #mainBrowser. -->
     <div class="panel-view" id="panelBrowser">
       <div class="panel-head">
         <span>Browser</span>
@@ -248,19 +249,7 @@
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="browserAddTab()" data-tooltip="New tab" aria-label="New tab"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         </div>
       </div>
-      <div class="browser-panel-body">
-        <div class="browser-tabs" id="browserTabs"></div>
-        <div class="browser-url-bar">
-          <button class="browser-url-btn" onclick="browserReload()" title="Reload" aria-label="Reload"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
-          <input type="text" id="browserUrlInput" class="browser-url-input" placeholder="localhost:3000  ·  3000  ·  https://example.com" autocomplete="off" spellcheck="false">
-          <button class="browser-url-btn" onclick="browserNavigate(document.getElementById('browserUrlInput').value)" title="Go" aria-label="Go"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
-        </div>
-        <div class="browser-iframe-wrap" id="browserIframeWrap"></div>
-        <div class="browser-foot">
-          <button class="browser-foot-btn" onclick="browserPopOut()" title="Open current URL in a new browser window">Pop out</button>
-          <button class="browser-foot-btn" onclick="browserOpenInDesktopFirefox()" title="Copy current URL and open the noVNC desktop so you can paste it into Firefox">Open in Firefox</button>
-        </div>
-      </div>
+      <div id="browserSidebarTabs" class="browser-sidebar-tabs"></div>
     </div>
     <!-- Memory panel -->
     <div class="panel-view" id="panelMemory">
@@ -743,6 +732,19 @@
       </div>
     </div>
     </div><!-- /#mainChat -->
+    <!-- Browser main view (fork-only). Holds the real browser UI:
+         tab strip + URL bar + iframe + footer. -->
+    <div id="mainBrowser" class="main-view">
+      <div class="browser-tabs" id="browserTabs"></div>
+      <div class="browser-url-bar">
+        <button class="browser-url-btn" onclick="browserReload()" title="Reload" aria-label="Reload"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+        <input type="text" id="browserUrlInput" class="browser-url-input" placeholder="3000  ·  localhost:8000  ·  https://example.com" autocomplete="off" spellcheck="false">
+        <button class="browser-url-btn" onclick="browserNavigate(document.getElementById('browserUrlInput').value)" title="Go" aria-label="Go"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+        <button class="browser-url-btn" onclick="browserPopOut()" title="Open URL in a new browser window" aria-label="Pop out"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
+        <button class="browser-url-btn" onclick="browserOpenInDesktopFirefox()" title="Copy URL and open noVNC desktop (paste into Firefox)" aria-label="Open in Firefox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+      </div>
+      <div class="browser-iframe-wrap" id="browserIframeWrap"></div>
+    </div>
     <div id="mainSkills" class="main-view">
       <div class="main-view-header">
         <div class="main-view-title" id="skillDetailTitle"></div>

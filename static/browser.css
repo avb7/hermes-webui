@@ -1,11 +1,37 @@
-/* Browser panel — minimal in-app web view for previewing sandbox-local apps. */
+/* Browser panel — minimal in-app web view for previewing sandbox-local apps.
+   The real UI lives in #mainBrowser (center area). #panelBrowser is the
+   sidebar slot that just lists open tabs as quick-switch buttons. */
 
-#panelBrowser .browser-panel-body {
+#mainBrowser {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  background: var(--bg);
+}
+
+#panelBrowser {
+  padding: 8px 0;
+}
+
+.browser-sidebar-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px;
+  overflow-y: auto;
+}
+
+.browser-sidebar-tabs .browser-tab {
+  max-width: none;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.browser-sidebar-tabs .browser-tab-title {
+  max-width: none;
+  flex: 1;
 }
 
 .browser-tabs {

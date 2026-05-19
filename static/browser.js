@@ -96,8 +96,7 @@
 
   // ---------- render ----------
 
-  function renderTabs() {
-    const strip = document.getElementById('browserTabs');
+  function _renderTabsInto(strip, opts = {}) {
     if (!strip) return;
     strip.innerHTML = '';
 
@@ -127,12 +126,21 @@
       strip.appendChild(btn);
     });
 
-    const add = document.createElement('button');
-    add.className = 'browser-tab-add';
-    add.textContent = '+';
-    add.title = 'New tab';
-    add.addEventListener('click', addTab);
-    strip.appendChild(add);
+    if (!opts.skipAddButton) {
+      const add = document.createElement('button');
+      add.className = 'browser-tab-add';
+      add.textContent = '+';
+      add.title = 'New tab';
+      add.addEventListener('click', addTab);
+      strip.appendChild(add);
+    }
+  }
+
+  function renderTabs() {
+    // Main tab strip (top of #mainBrowser, has the + button).
+    _renderTabsInto(document.getElementById('browserTabs'));
+    // Sidebar list (in #panelBrowser, no + button — use the + in panel-head).
+    _renderTabsInto(document.getElementById('browserSidebarTabs'), { skipAddButton: true });
   }
 
   function renderUrlBar() {
