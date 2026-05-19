@@ -4820,6 +4820,29 @@ def _run_agent_streaming(
                 # every N exchanges (when enabled in settings). Runs after stream_end
                 # so it doesn't block the stream.
                 _maybe_schedule_title_refresh(s, put, agent)
+                # Fork-only: fire a web-push notification so the user knows
+                # the agent finished even with the tab/browser closed. Safely
+                # no-ops if push isn't configured. The notification body is
+                # the first ~160 chars of the last assistant message; the
+                # client SW also suppresses it when the same session is
+                # already the visible foreground tab.
+                try:
+                    from api.push import notify_session_response
+                    _last_msg = ""
+                    try:
+                        for _m in reversed(getattr(s, 'messages', []) or []):
+                            if isinstance(_m, dict) and _m.get('role') == 'assistant':
+                                _last_msg = str(_m.get('content') or '')
+                                break
+                    except Exception:
+                        pass
+                    notify_session_response(
+                        session_id,
+                        title=str(getattr(s, 'title', '') or 'Hermes')[:80],
+                        body=_last_msg.strip()[:200] or 'Agent finished a turn.',
+                    )
+                except Exception:
+                    pass
         finally:
             # Stop the live metering ticker
             _metering_stop.set()

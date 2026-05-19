@@ -448,3 +448,64 @@ body.terminal-panel-maximized .terminalpanel {
 body.terminal-panel-maximized .terminalpanel .resize-handle {
   display: none;
 }
+
+/* ============================================================
+   Push notifications "Enable" pill (fork-only). Bottom-right
+   floating prompt shown only when permission is "default" and
+   the user hasn't dismissed it yet.
+   ============================================================ */
+
+.hermes-push-pill {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 200;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: var(--panel, #14142a);
+  color: var(--text, #e6e6f0);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hermes-push-pill-title {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.hermes-push-pill-sub {
+  display: block;
+  color: var(--muted, #999);
+  font-size: 11px;
+}
+
+.hermes-push-pill-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  justify-content: flex-end;
+}
+
+.hermes-push-pill-btn {
+  background: var(--accent, #b8860b);
+  color: var(--bg, #0d0d1a);
+  border: none;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hermes-push-pill-btn:hover { filter: brightness(1.1); }
+
+.hermes-push-pill-btn--ghost {
+  background: transparent;
+  color: var(--muted, #999);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+}

@@ -167,3 +167,70 @@ self.addEventListener('fetch', (event) => {
     })))
   );
 });
+
+// ── Web Push (fork-only) ───────────────────────────────────────────────────
+// Notifies on agent turn completion. Backend (api/push.py) POSTs a JSON
+// payload to the push service which delivers it here. We only show the
+// notification if no client window for the same session is currently
+// visible — otherwise it would be redundant noise.
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; }
+  catch (e) { try { payload = { body: event.data && event.data.text() }; } catch (_) {} }
+
+  const title = payload.title || 'Hermes';
+  const body = payload.body || 'Agent finished a turn.';
+  const url = payload.url || '/';
+  const sessionId = payload.session_id || '';
+
+  event.waitUntil((async () => {
+    // Suppress if a visible client is already on this session's URL.
+    try {
+      const clients = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      });
+      const visible = clients.find((c) => c.visibilityState === 'visible');
+      if (visible && sessionId) {
+        const cu = new URL(visible.url);
+        if (cu.pathname.endsWith('/session/' + sessionId)) return;
+      }
+    } catch (_) { /* fall through */ }
+
+    await self.registration.showNotification(title, {
+      body,
+      icon: './static/favicon-192.png',
+      badge: './static/favicon-32.png',
+      tag: 'hermes-session-' + (sessionId || 'default'),
+      renotify: true,
+      data: { url, session_id: sessionId },
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true,
+    });
+    // Try to focus an existing tab on the right URL, else any tab, else open.
+    let best = null;
+    for (const c of clients) {
+      try {
+        const u = new URL(c.url);
+        if (u.pathname.endsWith(target)) { best = c; break; }
+        if (!best) best = c;
+      } catch (_) {}
+    }
+    if (best) {
+      try { await best.focus(); } catch (_) {}
+      try { await best.navigate(target); } catch (_) {}
+      return;
+    }
+    await self.clients.openWindow(target);
+  })());
+});

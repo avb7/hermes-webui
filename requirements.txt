@@ -1,4 +1,10 @@
-# Hermes Web UI -- minimal Python dependencies
-# The server uses only stdlib + pyyaml.
-# All heavy ML/agent deps live in the Hermes agent venv.
+# Hermes Web UI -- minimal Python dependencies.
+# The server uses only stdlib + pyyaml; pywebpush + cryptography power the
+# fork-only web-push notifications (api/push.py). All heavy ML/agent deps
+# live in the Hermes agent venv.
 pyyaml>=6.0
+# Web push (fork-only addition for native-OS notifications when agents
+# finish a turn). cryptography is already a pywebpush transitive but listed
+# explicitly so the api/push.py VAPID keygen doesn't fail silently.
+pywebpush>=2.0.0
+cryptography>=42.0.0

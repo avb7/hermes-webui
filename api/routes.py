@@ -4147,6 +4147,11 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/terminals/list":
         return _handle_terminals_list(handler, parsed)
 
+    # Fork-only push notifications: VAPID public key for the frontend to use
+    # as applicationServerKey when subscribing.
+    if parsed.path == "/api/push/public-key":
+        return _handle_push_public_key(handler, parsed)
+
     if parsed.path == '/api/sessions/gateway/stream':
         return _handle_gateway_sse_stream(handler, parsed)
 
@@ -5176,6 +5181,14 @@ def handle_post(handler, parsed) -> bool:
         return _handle_terminals_resize(handler, body)
     if parsed.path == "/api/terminals/close":
         return _handle_terminals_close(handler, body)
+
+    # Fork-only push notifications: subscribe / unsubscribe / send-test.
+    if parsed.path == "/api/push/subscribe":
+        return _handle_push_subscribe(handler, body)
+    if parsed.path == "/api/push/unsubscribe":
+        return _handle_push_unsubscribe(handler, body)
+    if parsed.path == "/api/push/test":
+        return _handle_push_test(handler, body)
 
     # ── Cron API (POST) ──
     # See GET-side comment above: wrap in cron_profile_context so writes go
@@ -6397,6 +6410,85 @@ def _handle_terminals_close(handler, body):
 def _handle_terminals_list(handler, parsed):
     from api.terminal import list_terminals
     return j(handler, {"terminals": list_terminals()})
+
+
+# ─── Push notifications (fork-only) ─────────────────────────────────────────
+
+def _handle_push_public_key(handler, parsed):
+    try:
+        from api import push as _push
+        if not _push.is_available():
+            return j(
+                handler,
+                {"ok": False, "error": "push not available: " + _push.availability_reason()},
+                status=503,
+            )
+        return j(handler, {"ok": True, "public_key": _push.public_key_b64url()})
+    except Exception as e:
+        return bad(handler, _sanitize_error(e), 500)
+
+
+def _handle_push_subscribe(handler, body):
+    try:
+        from api import push as _push
+        if not _push.is_available():
+            return j(
+                handler,
+                {"ok": False, "error": "push not available: " + _push.availability_reason()},
+                status=503,
+            )
+        sub = body.get("subscription") or body
+        ua = ""
+        try:
+            ua = handler.headers.get("User-Agent", "") or ""
+        except Exception:
+            pass
+        if isinstance(sub, dict) and ua and not sub.get("user_agent"):
+            sub = dict(sub)
+            sub["user_agent"] = ua
+        record = _push.add_subscription(sub)
+        return j(handler, {"ok": True, "endpoint": record["endpoint"]})
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, _sanitize_error(e), 500)
+
+
+def _handle_push_unsubscribe(handler, body):
+    try:
+        from api import push as _push
+        endpoint = str(body.get("endpoint", "")).strip()
+        if not endpoint:
+            return bad(handler, "endpoint required", 400)
+        removed = _push.remove_subscription(endpoint)
+        return j(handler, {"ok": True, "removed": removed})
+    except Exception as e:
+        return bad(handler, _sanitize_error(e), 500)
+
+
+def _handle_push_test(handler, body):
+    """Send a test push to every registered subscription. Useful for
+    "I clicked Enable, did anything actually arrive?" sanity check."""
+    try:
+        from api import push as _push
+        if not _push.is_available():
+            return j(
+                handler,
+                {"ok": False, "error": "push not available: " + _push.availability_reason()},
+                status=503,
+            )
+        result = _push.send_to_all(
+            {
+                "type": "test",
+                "title": "Hermes",
+                "body": body.get("body") or "Test push from your sandbox.",
+                "url": "/",
+                "ts": int(__import__("time").time()),
+            }
+        )
+        return j(handler, {"ok": True, **result})
+    except Exception as e:
+        return bad(handler, _sanitize_error(e), 500)
 
 
 def _handle_terminals_output(handler, parsed):
