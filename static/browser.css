@@ -1,6 +1,8 @@
 /* Browser panel — minimal in-app web view for previewing sandbox-local apps.
-   The real UI lives in #mainBrowser (center area). #panelBrowser is the
-   sidebar slot that just lists open tabs as quick-switch buttons. */
+   The real UI lives in #mainBrowser (center area), structured as a 3-column
+   workspace: chat sessions on the left, browser in the middle, terminal on
+   the right. #panelBrowser is the rail-slot sidebar that lists open browser
+   tabs as a quick switcher. */
 
 #mainBrowser {
   display: flex;
@@ -9,6 +11,178 @@
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
+}
+
+.browser-workspace {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.browser-aside {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel, var(--bg));
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.browser-aside-left {
+  width: 200px;
+  border-right: 1px solid var(--border);
+}
+
+.browser-aside-right {
+  width: 380px;
+  border-left: 1px solid var(--border);
+}
+
+.browser-aside-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.browser-aside-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.browser-aside-btn:hover {
+  color: var(--text);
+  background: var(--input-bg);
+}
+
+.browser-center {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---- Sessions list (left) ---- */
+
+.browser-sessions-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.browser-session-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.browser-session-item:hover {
+  background: var(--input-bg);
+}
+
+.browser-session-item.active {
+  background: var(--input-bg);
+  border-left-color: var(--accent, var(--text));
+  font-weight: 500;
+}
+
+.browser-session-empty {
+  padding: 12px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ---- Terminal (right) ---- */
+
+.browser-terminal-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #0a0a0e;
+  overflow: hidden;
+}
+
+.browser-terminal-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.browser-terminal-xterm {
+  flex: 1;
+  min-height: 0;
+  display: none;
+  padding: 6px 0 0 6px;
+}
+
+.browser-terminal-xterm.active {
+  display: block;
+}
+
+.browser-terminal-xterm .xterm {
+  height: 100%;
+}
+
+.browser-terminal-status {
+  padding: 4px 10px;
+  font-size: 10px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  background: var(--panel, var(--bg));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 1100px) {
+  .browser-aside-left { width: 160px; }
+  .browser-aside-right { width: 320px; }
+}
+
+@media (max-width: 900px) {
+  .browser-aside-left,
+  .browser-aside-right { display: none; }
 }
 
 #panelBrowser {

@@ -732,18 +732,40 @@
       </div>
     </div>
     </div><!-- /#mainChat -->
-    <!-- Browser main view (fork-only). Holds the real browser UI:
-         tab strip + URL bar + iframe + footer. -->
+    <!-- Browser main view (fork-only) — 3-column workspace:
+         left: chat sessions list, center: browser, right: terminal. -->
     <div id="mainBrowser" class="main-view">
-      <div class="browser-tabs" id="browserTabs"></div>
-      <div class="browser-url-bar">
-        <button class="browser-url-btn" onclick="browserReload()" title="Reload" aria-label="Reload"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
-        <input type="text" id="browserUrlInput" class="browser-url-input" placeholder="3000  ·  localhost:8000  ·  https://example.com" autocomplete="off" spellcheck="false">
-        <button class="browser-url-btn" onclick="browserNavigate(document.getElementById('browserUrlInput').value)" title="Go" aria-label="Go"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
-        <button class="browser-url-btn" onclick="browserPopOut()" title="Open URL in a new browser window" aria-label="Pop out"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
-        <button class="browser-url-btn" onclick="browserOpenInDesktopFirefox()" title="Copy URL and open noVNC desktop (paste into Firefox)" aria-label="Open in Firefox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+      <div class="browser-workspace">
+        <aside class="browser-aside browser-aside-left">
+          <div class="browser-aside-head">
+            <span>Chat</span>
+            <button class="browser-aside-btn" onclick="browserSessionsRefresh()" title="Refresh sessions"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+          </div>
+          <div id="browserSessionsList" class="browser-sessions-list"></div>
+        </aside>
+        <div class="browser-center">
+          <div class="browser-tabs" id="browserTabs"></div>
+          <div class="browser-url-bar">
+            <button class="browser-url-btn" onclick="browserReload()" title="Reload" aria-label="Reload"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+            <input type="text" id="browserUrlInput" class="browser-url-input" placeholder="3000  ·  localhost:8000  ·  https://example.com" autocomplete="off" spellcheck="false">
+            <button class="browser-url-btn" onclick="browserNavigate(document.getElementById('browserUrlInput').value)" title="Go" aria-label="Go"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+            <button class="browser-url-btn" onclick="browserPopOut()" title="Open URL in a new browser window" aria-label="Pop out"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
+            <button class="browser-url-btn" onclick="browserOpenInDesktopFirefox()" title="Copy URL and open noVNC desktop (paste into Firefox for sites that block iframing — Google, GitHub, etc.)" aria-label="Open in Firefox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+          </div>
+          <div class="browser-iframe-wrap" id="browserIframeWrap"></div>
+        </div>
+        <aside class="browser-aside browser-aside-right">
+          <div class="browser-aside-head">
+            <span>Terminal</span>
+            <button class="browser-aside-btn" onclick="browserTerminalRestart()" title="Restart terminal"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+          </div>
+          <div id="browserTerminalContainer" class="browser-terminal-container">
+            <div id="browserTerminalEmpty" class="browser-terminal-empty">No active chat. Open or create a conversation to start a terminal.</div>
+            <div id="browserTerminalXterm" class="browser-terminal-xterm"></div>
+            <div id="browserTerminalStatus" class="browser-terminal-status"></div>
+          </div>
+        </aside>
       </div>
-      <div class="browser-iframe-wrap" id="browserIframeWrap"></div>
     </div>
     <div id="mainSkills" class="main-view">
       <div class="main-view-header">

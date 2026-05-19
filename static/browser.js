@@ -289,12 +289,260 @@
     }
   }
 
-  // Expose for inline onclick handlers in index.html.
+  // ---- Sessions list (left aside) ---------------------------------------
+  // Compact session list that mirrors the chat sidebar but stays visible
+  // when the user is in Browser view. Click switches the active session
+  // (reusing the existing chat machinery if available).
+
+  async function loadBrowserSessions() {
+    const list = document.getElementById('browserSessionsList');
+    if (!list) return;
+    let sessions = [];
+    try {
+      const res = await fetch('static/'); // touch to ensure same-origin
+      const resp = await fetch('api/sessions', { credentials: 'same-origin' });
+      const data = await resp.json();
+      sessions = data.sessions || data || [];
+    } catch (e) {
+      list.innerHTML =
+        '<div class="browser-session-empty">Could not load sessions.</div>';
+      return;
+    }
+
+    if (!sessions.length) {
+      list.innerHTML =
+        '<div class="browser-session-empty">No conversations yet.</div>';
+      return;
+    }
+
+    const activeId = (window.S && window.S.session && window.S.session.id) || null;
+    list.innerHTML = '';
+    sessions.slice(0, 30).forEach(s => {
+      const btn = document.createElement('button');
+      btn.className = 'browser-session-item' + (s.id === activeId ? ' active' : '');
+      btn.textContent = s.title || s.id || 'untitled';
+      btn.title = s.title || s.id || '';
+      btn.addEventListener('click', () => {
+        if (typeof window.setActiveSession === 'function') {
+          window.setActiveSession(s.id);
+        } else if (typeof window.loadSession === 'function') {
+          window.loadSession(s.id);
+        } else {
+          location.href = 'session/' + s.id;
+        }
+        // After switching, refresh both this list and the terminal binding
+        setTimeout(() => {
+          loadBrowserSessions();
+          initBrowserTerminal();
+        }, 50);
+      });
+      list.appendChild(btn);
+    });
+  }
+
+  // ---- Terminal (right aside) -------------------------------------------
+  // Uses the existing /api/terminal/* endpoints (start, input, resize,
+  // close + SSE output stream). Each chat session has at most one terminal;
+  // multi-terminal would require a `terminal_id` param in the backend.
+
+  const TERMINAL = {
+    term: null,
+    fitAddon: null,
+    sessionId: null,
+    sse: null,
+    resizeObserver: null,
+  };
+
+  function _ttySid() {
+    return (window.S && window.S.session && window.S.session.id) || null;
+  }
+
+  function _ttyEls() {
+    return {
+      container: document.getElementById('browserTerminalContainer'),
+      empty: document.getElementById('browserTerminalEmpty'),
+      xterm: document.getElementById('browserTerminalXterm'),
+      status: document.getElementById('browserTerminalStatus'),
+    };
+  }
+
+  function _xtermReady() {
+    return typeof window.Terminal === 'function';
+  }
+
+  function _ensureTerm() {
+    const { xterm } = _ttyEls();
+    if (TERMINAL.term || !xterm || !_xtermReady()) return TERMINAL.term;
+    const term = new window.Terminal({
+      cursorBlink: true,
+      fontSize: 12,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      theme: { background: '#0a0a0e', foreground: '#e6e6f0' },
+      scrollback: 5000,
+      convertEol: true,
+    });
+    const fit = window.FitAddon ? new window.FitAddon.FitAddon() : null;
+    if (fit) term.loadAddon(fit);
+    if (window.WebLinksAddon) {
+      term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
+    }
+    term.open(xterm);
+    if (fit) {
+      try { fit.fit(); } catch (e) {}
+    }
+    term.onData(data => {
+      if (!TERMINAL.sessionId) return;
+      fetch('api/terminal/input', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: TERMINAL.sessionId, data }),
+      }).catch(() => {});
+    });
+    TERMINAL.term = term;
+    TERMINAL.fitAddon = fit;
+    if (window.ResizeObserver && !TERMINAL.resizeObserver) {
+      TERMINAL.resizeObserver = new ResizeObserver(() => {
+        try { fit && fit.fit(); } catch (e) {}
+        _resizeRemote();
+      });
+      TERMINAL.resizeObserver.observe(xterm);
+    }
+    return term;
+  }
+
+  async function _resizeRemote() {
+    if (!TERMINAL.term || !TERMINAL.sessionId) return;
+    const { rows, cols } = TERMINAL.term;
+    try {
+      await fetch('api/terminal/resize', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: TERMINAL.sessionId, rows, cols }),
+      });
+    } catch (e) {}
+  }
+
+  function _setStatus(s) {
+    const { status } = _ttyEls();
+    if (status) status.textContent = s || '';
+  }
+
+  function _disconnectSse() {
+    if (TERMINAL.sse) {
+      try { TERMINAL.sse.close(); } catch (e) {}
+      TERMINAL.sse = null;
+    }
+  }
+
+  function _connectSse(sid) {
+    _disconnectSse();
+    const url = 'api/terminal/output?session_id=' + encodeURIComponent(sid);
+    const source = new EventSource(url, { withCredentials: true });
+    TERMINAL.sse = source;
+    source.addEventListener('terminal_data', ev => {
+      try {
+        const payload = JSON.parse(ev.data);
+        if (payload.data && TERMINAL.term) TERMINAL.term.write(payload.data);
+      } catch (e) {}
+    });
+    source.addEventListener('terminal_exit', () => {
+      _setStatus('terminal exited');
+    });
+    source.addEventListener('terminal_error', ev => {
+      let msg = 'terminal error';
+      try { msg = (JSON.parse(ev.data) || {}).error || msg; } catch (e) {}
+      _setStatus(msg);
+    });
+    source.onerror = () => _setStatus('disconnected — will reconnect');
+    source.onopen = () => _setStatus('connected to session ' + sid.slice(0, 8));
+  }
+
+  async function initBrowserTerminal(opts = {}) {
+    const { empty, xterm } = _ttyEls();
+    const sid = _ttySid();
+    if (!sid) {
+      if (empty) empty.style.display = 'flex';
+      if (xterm) xterm.classList.remove('active');
+      _disconnectSse();
+      TERMINAL.sessionId = null;
+      _setStatus('');
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    if (xterm) xterm.classList.add('active');
+
+    if (!_xtermReady()) {
+      _setStatus('xterm.js still loading...');
+      setTimeout(() => initBrowserTerminal(opts), 250);
+      return;
+    }
+
+    const term = _ensureTerm();
+    if (!term) return;
+
+    // Re-attach if session changed
+    const restart = opts.restart || TERMINAL.sessionId !== sid;
+    if (restart) {
+      TERMINAL.sessionId = sid;
+      try {
+        await fetch('api/terminal/start', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sid,
+            rows: term.rows,
+            cols: term.cols,
+            restart: !!opts.restart,
+          }),
+        });
+      } catch (e) {
+        _setStatus('start failed: ' + e.message);
+        return;
+      }
+      _connectSse(sid);
+      if (TERMINAL.fitAddon) {
+        try { TERMINAL.fitAddon.fit(); } catch (e) {}
+      }
+      _resizeRemote();
+    }
+  }
+
+  function browserTerminalRestart() {
+    initBrowserTerminal({ restart: true });
+  }
+
+  function browserSessionsRefresh() {
+    loadBrowserSessions();
+  }
+
+  // ---- Wire panel-switch hook -------------------------------------------
+  // Only initialize sessions + terminal when the Browser panel actually
+  // becomes active, and tear down terminal SSE when the user leaves.
+
+  const _origSwitchPanel = window.switchPanel;
+  if (typeof _origSwitchPanel === 'function') {
+    window.switchPanel = async function (name, opts) {
+      const result = await _origSwitchPanel(name, opts);
+      if (name === 'browser') {
+        loadBrowserSessions();
+        initBrowserTerminal();
+      }
+      return result;
+    };
+  }
+
+  // ---- Expose globals + init --------------------------------------------
+
   window.browserNavigate = navigate;
   window.browserAddTab = addTab;
   window.browserReload = reloadActiveTab;
   window.browserPopOut = popOutActiveTab;
   window.browserOpenInDesktopFirefox = openInDesktopFirefox;
+  window.browserSessionsRefresh = browserSessionsRefresh;
+  window.browserTerminalRestart = browserTerminalRestart;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
