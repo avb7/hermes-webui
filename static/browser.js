@@ -32,36 +32,65 @@
   const STORAGE_WIDTH = 'hermes-browser-panel-width';
   const STORAGE_MAX = 'hermes-browser-panel-maximized';
 
-  function loadTabsState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_TABS);
-      if (raw) return JSON.parse(raw);
-    } catch (e) {}
-    return {
-      tabs: [{ id: newTabId(), title: 'New tab', url: '' }],
-      activeTabId: null,
-    };
+  // The "Computer" tab is always pinned as the first tab. It links to the
+  // sandbox's noVNC desktop. URL is computed on the fly from the current
+  // hostname so it stays correct even if the user creates a fresh sandbox.
+  const PINNED_COMPUTER_ID = 'pinned-computer';
+
+  function getSandboxId() {
+    const m = location.host.match(/^(\d+)-([a-z0-9]+)\.e2b\.(app|dev)$/i);
+    return m ? m[2] : null;
   }
 
-  function saveTabsState() {
-    try { localStorage.setItem(STORAGE_TABS, JSON.stringify(state)); } catch (e) {}
+  function getDesktopUrl() {
+    const sid = getSandboxId();
+    return sid ? `https://6080-${sid}.e2b.app` : '';
   }
 
   function newTabId() {
     return 't' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   }
 
+  function ensurePinnedTab(s) {
+    // Drop any stale pinned-id tabs (e.g. from format migrations) and
+    // prepend a fresh one. We refresh the URL here AND on every render
+    // so it tracks the active sandbox.
+    s.tabs = (s.tabs || []).filter(t => t.id !== PINNED_COMPUTER_ID);
+    s.tabs.unshift({
+      id: PINNED_COMPUTER_ID,
+      title: 'Computer',
+      url: getDesktopUrl(),
+      pinned: true,
+    });
+    return s;
+  }
+
+  function loadTabsState() {
+    let s = null;
+    try {
+      const raw = localStorage.getItem(STORAGE_TABS);
+      if (raw) s = JSON.parse(raw);
+    } catch (e) {}
+    if (!s || !Array.isArray(s.tabs)) {
+      s = {
+        tabs: [{ id: newTabId(), title: 'New tab', url: '' }],
+        activeTabId: null,
+      };
+    }
+    return ensurePinnedTab(s);
+  }
+
+  function saveTabsState() {
+    try { localStorage.setItem(STORAGE_TABS, JSON.stringify(state)); } catch (e) {}
+  }
+
   const state = loadTabsState();
   if (!state.activeTabId && state.tabs.length > 0) {
+    // Default to the pinned Computer tab on first ever open.
     state.activeTabId = state.tabs[0].id;
   }
 
   // ── URL helpers ──────────────────────────────────────────────────────────
-
-  function getSandboxId() {
-    const m = location.host.match(/^(\d+)-([a-z0-9]+)\.e2b\.(app|dev)$/i);
-    return m ? m[2] : null;
-  }
 
   function rewriteUrl(input) {
     const sid = getSandboxId();
@@ -83,7 +112,14 @@
   }
 
   function getActiveTab() {
-    return state.tabs.find(t => t.id === state.activeTabId) || state.tabs[0];
+    const tab = state.tabs.find(t => t.id === state.activeTabId) || state.tabs[0];
+    // Refresh the pinned tab's URL from the current host every read so a
+    // sandbox-id change (e.g. after a kill/recreate) still resolves
+    // correctly without rewriting localStorage.
+    if (tab && tab.pinned && tab.id === PINNED_COMPUTER_ID) {
+      tab.url = getDesktopUrl();
+    }
+    return tab;
   }
 
   // ── Rendering ────────────────────────────────────────────────────────────
@@ -95,15 +131,30 @@
 
     state.tabs.forEach(tab => {
       const btn = document.createElement('button');
-      btn.className = 'browser-tab' + (tab.id === state.activeTabId ? ' active' : '');
-      btn.title = tab.url || 'New tab';
+      btn.className =
+        'browser-tab' +
+        (tab.id === state.activeTabId ? ' active' : '') +
+        (tab.pinned ? ' pinned' : '');
+      btn.title = tab.pinned ? 'Pinned · sandbox desktop' : (tab.url || 'New tab');
+
+      if (tab.pinned) {
+        // Small monitor icon so the pinned tab is recognizable.
+        const icon = document.createElement('span');
+        icon.className = 'browser-tab-icon';
+        icon.innerHTML =
+          '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+        btn.appendChild(icon);
+      }
 
       const title = document.createElement('span');
       title.className = 'browser-tab-title';
       title.textContent = tab.title || 'New tab';
       btn.appendChild(title);
 
-      if (state.tabs.length > 1) {
+      // Close button: never on the pinned tab; otherwise only when there
+      // is at least one other closable tab to fall back to.
+      const closableCount = state.tabs.filter(t => !t.pinned).length;
+      if (!tab.pinned && closableCount > 1) {
         const close = document.createElement('span');
         close.className = 'browser-tab-close';
         close.textContent = '×';
@@ -161,6 +212,9 @@
       'allow-same-origin allow-scripts allow-forms allow-popups ' +
       'allow-popups-to-escape-sandbox allow-downloads allow-modals';
     iframe.addEventListener('load', () => {
+      // Don't let the pinned Computer tab rename itself from the iframe's
+      // <title>. Other tabs auto-rename to the page title when same-origin.
+      if (tab.pinned) return;
       try {
         const doc = iframe.contentDocument;
         if (doc && doc.title) {
@@ -182,8 +236,16 @@
   // ── Tab actions ──────────────────────────────────────────────────────────
 
   function navigate(rawInput) {
-    const tab = getActiveTab();
+    let tab = getActiveTab();
     if (!tab) return;
+    // The pinned Computer tab is always pointed at the noVNC desktop.
+    // If the user types a URL while on it, spawn a new tab instead of
+    // hijacking the pinned one.
+    if (tab.pinned) {
+      addTab();
+      tab = getActiveTab();
+      if (!tab) return;
+    }
     const url = rewriteUrl(rawInput);
     tab.url = url;
     if (url) {
@@ -217,8 +279,12 @@
   function closeTab(id) {
     const idx = state.tabs.findIndex(t => t.id === id);
     if (idx < 0) return;
+    const target = state.tabs[idx];
+    if (target.pinned) return; // pinned tabs can't be closed
     state.tabs.splice(idx, 1);
-    if (state.tabs.length === 0) {
+    // Guarantee the pinned tab still exists; add a fresh blank if the user
+    // somehow ended up with only the pinned tab and just closed everything.
+    if (!state.tabs.some(t => !t.pinned)) {
       state.tabs.push({ id: newTabId(), title: 'New tab', url: '' });
     }
     if (state.activeTabId === id) {

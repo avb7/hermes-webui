@@ -92,6 +92,30 @@
   border-color: var(--accent, var(--text));
 }
 
+/* Pinned tab (Computer / sandbox desktop) — distinctive accent, narrower,
+   no close button by virtue of the JS not emitting one. */
+.browser-tab.pinned {
+  background: var(--accent-bg, rgba(127, 127, 255, 0.08));
+  border-color: var(--accent, var(--border));
+  color: var(--text);
+  max-width: 130px;
+  padding-left: 6px;
+  padding-right: 8px;
+}
+
+.browser-tab.pinned.active {
+  background: var(--accent, var(--panel));
+  color: var(--bg, var(--panel));
+  border-color: var(--accent, var(--text));
+}
+
+.browser-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  flex-shrink: 0;
+}
+
 .browser-tab-title {
   text-overflow: ellipsis;
   overflow: hidden;
