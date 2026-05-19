@@ -137,88 +137,125 @@
 
   async function _bootInstance(tab) {
     if (tab.term) return;
+    const dbg = (msg, extra) => {
+      console.log('[terminals]', tab.terminal_id.slice(-6), msg, extra || '');
+    };
+    dbg('boot start');
+    _setStatus('booting ' + tab.terminal_id.slice(-6) + '…');
     const container = _ensureInstanceContainer(tab.terminal_id);
-    // Make sure the container is the visible (active) one BEFORE we
-    // initialize xterm — otherwise its canvas computes zero dimensions
-    // and never grows back. _showActiveInstance() handles toggling other
-    // siblings off and our target on.
     if (state.activeId === tab.terminal_id) {
       _showActiveInstance();
     }
-    // Give the browser a chance to paint the visibility change.
     await _twoFrames();
 
-    const term = new window.Terminal({
-      cursorBlink: true,
-      fontSize: 12,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-      theme: { background: '#0a0a0e', foreground: '#e6e6f0' },
-      scrollback: 5000,
-      convertEol: true,
-    });
-    const fit = window.FitAddon ? new window.FitAddon.FitAddon() : null;
-    if (fit) term.loadAddon(fit);
-    if (window.WebLinksAddon) term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
-    term.open(container);
-    // One more frame so xterm can populate its viewport before we fit.
-    await _twoFrames();
-    if (fit) {
-      try { fit.fit(); } catch (e) {}
+    // Defensive: log container size so we know if layout is broken.
+    const r1 = container.getBoundingClientRect();
+    dbg('container size pre-open', `${r1.width}x${r1.height}`);
+    if (r1.width < 20 || r1.height < 20) {
+      _setStatus('panel has no size — try toggling close/open');
     }
 
-    term.onData(data => {
-      fetch('api/terminals/input', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ terminal_id: tab.terminal_id, data }),
-      }).catch(() => {});
-    });
-
-    tab.term = term;
-    tab.fitAddon = fit;
-
-    // Start backend PTY
     try {
-      await fetch('api/terminals/start', {
+      const term = new window.Terminal({
+        cursorBlink: true,
+        fontSize: 12,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        theme: { background: '#0a0a0e', foreground: '#e6e6f0' },
+        scrollback: 5000,
+        convertEol: true,
+      });
+      let fit = null;
+      if (window.FitAddon && window.FitAddon.FitAddon) {
+        fit = new window.FitAddon.FitAddon();
+        term.loadAddon(fit);
+      } else {
+        dbg('FitAddon not on window — terminal will not auto-size');
+      }
+      if (window.WebLinksAddon && window.WebLinksAddon.WebLinksAddon) {
+        term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
+      }
+      term.open(container);
+      dbg('after open', `rows=${term.rows} cols=${term.cols}`);
+
+      await _twoFrames();
+      const r2 = container.getBoundingClientRect();
+      dbg('container size post-open', `${r2.width}x${r2.height}`);
+
+      if (fit) {
+        try { fit.fit(); dbg('after fit', `rows=${term.rows} cols=${term.cols}`); }
+        catch (e) { dbg('fit() threw', e.message); }
+      }
+      // Hard fallback: if fit produced 0×0 (e.g. addon missing or panel
+      // still hidden), force a reasonable size so backend bash actually
+      // gets a sane TERM size and prints its prompt.
+      if (!term.rows || !term.cols || term.rows < 2 || term.cols < 10) {
+        try { term.resize(80, 24); dbg('forced default 80x24'); } catch (e) {}
+      }
+
+      term.onData(data => {
+        fetch('api/terminals/input', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ terminal_id: tab.terminal_id, data }),
+        }).catch(() => {});
+      });
+
+      tab.term = term;
+      tab.fitAddon = fit;
+
+      // Start backend PTY.
+      dbg('POST /api/terminals/start');
+      const startRes = await fetch('api/terminals/start', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           terminal_id: tab.terminal_id,
-          rows: term.rows,
-          cols: term.cols,
+          rows: term.rows || 24,
+          cols: term.cols || 80,
         }),
       });
-    } catch (e) {
-      _setStatus('start failed: ' + e.message);
-      return;
-    }
+      if (!startRes.ok) {
+        const errText = await startRes.text().catch(() => '<no body>');
+        dbg('start failed', `HTTP ${startRes.status} ${errText}`);
+        _setStatus('start ' + startRes.status + ': ' + errText.slice(0, 60));
+        try { term.write('\r\n\x1b[31m[start failed: HTTP ' + startRes.status + '] ' + errText.slice(0, 200) + '\x1b[0m\r\n'); } catch (e) {}
+        return;
+      }
+      dbg('start ok');
+      _setStatus('connected ' + tab.terminal_id.slice(-6));
 
-    // Subscribe to output SSE
-    const url = 'api/terminals/output?terminal_id=' + encodeURIComponent(tab.terminal_id);
-    const sse = new EventSource(url, { withCredentials: true });
-    tab.sse = sse;
-    sse.addEventListener('terminal_data', ev => {
-      try {
-        const payload = JSON.parse(ev.data);
-        if (payload.data) term.write(payload.data);
-      } catch (e) {}
-    });
-    sse.addEventListener('terminal_closed', () => {
-      _setStatus('terminal exited');
-    });
-    sse.onopen = () => _setStatus('terminal ' + tab.terminal_id.slice(-6));
-    sse.onerror = () => _setStatus('reconnecting…');
-
-    // Resize on container changes
-    if (window.ResizeObserver) {
-      tab._resizeObserver = new ResizeObserver(() => {
-        if (!tab.term || tab.term !== term) return;
-        try { fit && fit.fit(); } catch (e) {}
-        _resizeRemote(tab);
+      // Subscribe to output SSE.
+      const url = 'api/terminals/output?terminal_id=' + encodeURIComponent(tab.terminal_id);
+      const sse = new EventSource(url, { withCredentials: true });
+      tab.sse = sse;
+      sse.addEventListener('terminal_data', ev => {
+        try {
+          const payload = JSON.parse(ev.data);
+          if (payload.data) term.write(payload.data);
+        } catch (e) { dbg('sse parse error', e.message); }
       });
-      tab._resizeObserver.observe(container);
+      sse.addEventListener('terminal_closed', () => {
+        _setStatus('terminal exited');
+        try { term.write('\r\n\x1b[33m[terminal exited]\x1b[0m\r\n'); } catch (e) {}
+      });
+      sse.onopen = () => dbg('sse open');
+      sse.onerror = () => { dbg('sse error'); _setStatus('reconnecting…'); };
+
+      // Resize on container changes.
+      if (window.ResizeObserver) {
+        tab._resizeObserver = new ResizeObserver(() => {
+          if (!tab.term || tab.term !== term) return;
+          try { fit && fit.fit(); } catch (e) {}
+          _resizeRemote(tab);
+        });
+        tab._resizeObserver.observe(container);
+      }
+      term.focus();
+    } catch (err) {
+      dbg('FATAL', err && err.message);
+      _setStatus('error: ' + (err && err.message || err));
     }
   }
 
