@@ -404,10 +404,10 @@ body.browser-panel-maximized .browserpanel .resize-handle {
 }
 
 /* Each terminal-instance lives in its own absolute-positioned panel; we
-   show only the .active one. No padding / explicit child sizing — let xterm
-   manage its own canvas dimensions, otherwise its internal layout math
-   conflicts with our 100%-width override and you get a tiny cursor in the
-   corner of a black void. */
+   show only the .active one. Each instance wraps the upstream
+   composer-terminal-viewport > composer-terminal-surface DOM so xterm's
+   internal CSS rules (.xterm height:100%, .xterm-screen height:100%, etc.)
+   inherit correctly and rendering works. */
 .terminal-instance {
   position: absolute;
   inset: 0;
@@ -415,6 +415,10 @@ body.browser-panel-maximized .browserpanel .resize-handle {
 }
 .terminal-instance.active {
   display: block;
+}
+.terminal-instance .composer-terminal-viewport {
+  width: 100%;
+  height: 100%;
 }
 
 .terminalpanel-status {

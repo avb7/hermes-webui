@@ -347,6 +347,9 @@
 
   function toggleBrowserPanel(force) {
     const next = typeof force === 'boolean' ? force : !isOpen();
+    if (next && typeof window.toggleTerminalPanel === 'function') {
+      window.toggleTerminalPanel(false);
+    }
     setOpen(next);
   }
 

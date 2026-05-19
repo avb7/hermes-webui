@@ -1,31 +1,34 @@
 /**
- * Terminal panel — Cursor/VSCode-style multi-tab terminal dock.
+ * Right-side multi-terminal panel (fork-only).
  *
- * Each tab is a real xterm.js Terminal bound to a unique `terminal_id` on
- * the backend. The backend speaks /api/terminals/* (plural) which is the
- * fork-only multi-terminal API — it reuses the existing PTY machinery but
- * keys terminals by a frontend-generated id instead of chat session_id, so
- * you can run as many simultaneous terminals as you like.
+ * Reuses upstream's xterm.js setup almost verbatim:
+ *  - Same Terminal({...}) options as terminal.js#_ensureXterm
+ *  - Same _terminalTheme() function (if exposed; falls back to plain dark theme)
+ *  - Same FitAddon + WebLinksAddon usage
+ *  - SAME CSS class hierarchy: composer-terminal-viewport > composer-terminal-surface
+ *    so upstream's `.xterm` / `.xterm-viewport` / `.xterm-screen` rules apply
+ *    and rendering works the way it does in the composer-bottom terminal.
+ *
+ * Wire-up:
+ *  - Each tab owns its own Terminal + PTY (frontend-generated terminal_id).
+ *  - PTY managed by /api/terminals/{start,input,resize,close,output} (plural,
+ *    chat-session-independent — that backend already exists in api/routes.py).
+ *  - Tab list + active id + panel open/maximized/width persisted to localStorage.
  *
  * Public API (used by inline onclick handlers in index.html):
- *   toggleTerminalPanel(force)   — open / close
- *   terminalMaximizeToggle()     — full takeover toggle
- *   terminalAddTab()             — open a new terminal in a new tab
- *
- * State (terminal_id list + active tab + open/maximized/width) is
- * persisted to localStorage so reloads keep the same set.
+ *   toggleTerminalPanel(force)
+ *   terminalMaximizeToggle()
+ *   terminalAddTab()
  */
 
 (function () {
   'use strict';
 
-  const STORAGE_TABS = 'hermes-terminals-state-v1';
+  const STORAGE_TABS = 'hermes-terminals-state-v2';
   const STORAGE_OPEN = 'hermes-terminal-panel-open';
   const STORAGE_WIDTH = 'hermes-terminal-panel-width';
   const STORAGE_MAX = 'hermes-terminal-panel-maximized';
 
-  // tabs: [{ terminal_id, title, term?, fitAddon?, sse? }, ...]
-  // (term + fitAddon + sse are runtime-only, never persisted)
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_TABS);
@@ -45,47 +48,40 @@
 
   function saveState() {
     try {
-      const serializable = {
+      localStorage.setItem(STORAGE_TABS, JSON.stringify({
         activeId: state.activeId,
         tabs: state.tabs.map(t => ({
           terminal_id: t.terminal_id,
           title: t.title,
         })),
-      };
-      localStorage.setItem(STORAGE_TABS, JSON.stringify(serializable));
+      }));
     } catch (e) {}
   }
 
   const state = loadState();
 
-  // ── helpers ──────────────────────────────────────────────────────────────
-
   function newTerminalId() {
-    return 'mt-' + Date.now() + '-' + Math.floor(Math.random() * 100000).toString(36);
-  }
-
-  function _panel() {
-    return document.getElementById('terminalPanel');
-  }
-
-  function _body() {
-    return document.getElementById('terminalBody');
+    return 'mt-' + Date.now() + '-' + Math.floor(Math.random() * 1e6).toString(36);
   }
 
   function _xtermReady() {
     return typeof window.Terminal === 'function';
   }
 
-  function _setStatus(s) {
-    const el = document.getElementById('terminalStatus');
-    if (el) el.textContent = s || '';
+  function _theme() {
+    // Reuse upstream's theme function if available so colors match the
+    // composer-bottom terminal exactly and follow theme/skin changes.
+    if (typeof window._terminalTheme === 'function') {
+      try { return window._terminalTheme(); } catch (e) {}
+    }
+    return { background: '#0D0D1A', foreground: '#E2E8F0' };
   }
+
+  // ── Tab strip render ─────────────────────────────────────────────────────
 
   function _activeTab() {
     return state.tabs.find(t => t.terminal_id === state.activeId) || state.tabs[0];
   }
-
-  // ── tab strip render ─────────────────────────────────────────────────────
 
   function renderTabs() {
     const strip = document.getElementById('terminalTabs');
@@ -93,16 +89,15 @@
     strip.innerHTML = '';
     state.tabs.forEach((tab, idx) => {
       const btn = document.createElement('button');
-      btn.className =
-        'browser-tab' + (tab.terminal_id === state.activeId ? ' active' : '');
+      btn.className = 'browser-tab' + (tab.terminal_id === state.activeId ? ' active' : '');
       btn.title = tab.terminal_id;
       const title = document.createElement('span');
       title.className = 'browser-tab-title';
-      title.textContent = tab.title || `Terminal ${idx + 1}`;
+      title.textContent = tab.title || `T${idx + 1}`;
       btn.appendChild(title);
       const close = document.createElement('span');
       close.className = 'browser-tab-close';
-      close.textContent = '×';
+      close.textContent = '\u00d7';
       close.title = 'Close terminal';
       close.addEventListener('click', e => {
         e.stopPropagation();
@@ -114,110 +109,87 @@
     });
   }
 
-  // ── terminal instance render ────────────────────────────────────────────
+  // ── Per-tab DOM container + xterm boot ───────────────────────────────────
+  //
+  // The DOM structure mirrors index.html's composer terminal exactly:
+  //   <div class="terminal-instance">
+  //     <div class="composer-terminal-viewport">
+  //       <div class="composer-terminal-surface"></div>   <-- term.open(this)
+  //     </div>
+  //   </div>
 
   function _ensureInstanceContainer(terminal_id) {
-    let el = document.getElementById('term-inst-' + terminal_id);
-    if (el) return el;
-    el = document.createElement('div');
-    el.className = 'terminal-instance';
-    el.id = 'term-inst-' + terminal_id;
-    _body().appendChild(el);
-    return el;
+    let host = document.getElementById('term-inst-' + terminal_id);
+    if (host) return host;
+    host = document.createElement('div');
+    host.id = 'term-inst-' + terminal_id;
+    host.className = 'terminal-instance';
+    const viewport = document.createElement('div');
+    viewport.className = 'composer-terminal-viewport';
+    const surface = document.createElement('div');
+    surface.className = 'composer-terminal-surface';
+    viewport.appendChild(surface);
+    host.appendChild(viewport);
+    document.getElementById('terminalBody').appendChild(host);
+    return host;
   }
 
-  function _twoFrames() {
-    // Wait for the browser to complete layout. Without this, term.open()
-    // runs against a 0×0 container (the panel was just toggled visible)
-    // and xterm renders into the void.
-    return new Promise(resolve => {
-      requestAnimationFrame(() => requestAnimationFrame(resolve));
-    });
+  function _surfaceFor(host) {
+    return host.querySelector('.composer-terminal-surface');
   }
 
   async function _bootInstance(tab) {
     if (tab.term) return;
-    const dbg = (msg, extra) => {
-      console.log('[terminals]', tab.terminal_id.slice(-6), msg, extra || '');
-    };
-    dbg('boot start');
-    _setStatus('booting ' + tab.terminal_id.slice(-6) + '…');
-    const container = _ensureInstanceContainer(tab.terminal_id);
-    if (state.activeId === tab.terminal_id) {
-      _showActiveInstance();
+    if (!_xtermReady()) {
+      setTimeout(() => _bootInstance(tab), 200);
+      return;
     }
-    await _twoFrames();
+    const host = _ensureInstanceContainer(tab.terminal_id);
+    const surface = _surfaceFor(host);
 
-    // Defensive: log container size so we know if layout is broken.
-    const r1 = container.getBoundingClientRect();
-    dbg('container size pre-open', `${r1.width}x${r1.height}`);
-    if (r1.width < 20 || r1.height < 20) {
-      _setStatus('panel has no size — try toggling close/open');
+    // Mark this tab's host as the active one BEFORE term.open so the
+    // surface has real layout dimensions when xterm reads them.
+    Array.from(document.querySelectorAll('#terminalBody .terminal-instance'))
+      .forEach(el => el.classList.toggle('active', el === host));
+    // Two animation frames so the browser actually lays it out.
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const term = new window.Terminal({
+      cursorBlink: true,
+      fontSize: 13,
+      fontFamily: 'Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+      scrollback: 1000,
+      convertEol: false,
+      theme: _theme(),
+    });
+    let fit = null;
+    if (window.FitAddon && window.FitAddon.FitAddon) {
+      fit = new window.FitAddon.FitAddon();
+      term.loadAddon(fit);
     }
+    if (window.WebLinksAddon && window.WebLinksAddon.WebLinksAddon) {
+      term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
+    }
+    term.open(surface);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    if (fit) { try { fit.fit(); } catch (e) {} }
 
+    term.onData(data => {
+      fetch('api/terminals/input', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ terminal_id: tab.terminal_id, data }),
+      }).catch(() => {});
+    });
+
+    tab.term = term;
+    tab.fitAddon = fit;
+    tab.host = host;
+
+    // Start the backend PTY.
     try {
-      const term = new window.Terminal({
-        cursorBlink: true,
-        fontSize: 12,
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        theme: { background: '#0a0a0e', foreground: '#e6e6f0' },
-        scrollback: 5000,
-        convertEol: true,
-      });
-      let fit = null;
-      if (window.FitAddon && window.FitAddon.FitAddon) {
-        fit = new window.FitAddon.FitAddon();
-        term.loadAddon(fit);
-      } else {
-        dbg('FitAddon not on window — terminal will not auto-size');
-      }
-      if (window.WebLinksAddon && window.WebLinksAddon.WebLinksAddon) {
-        term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
-      }
-      term.open(container);
-      dbg('after open', `rows=${term.rows} cols=${term.cols}`);
-
-      await _twoFrames();
-      const r2 = container.getBoundingClientRect();
-      dbg('container size post-open', `${r2.width}x${r2.height}`);
-
-      if (fit) {
-        try { fit.fit(); dbg('after fit', `rows=${term.rows} cols=${term.cols}`); }
-        catch (e) { dbg('fit() threw', e.message); }
-      }
-      if (!term.rows || !term.cols || term.rows < 2 || term.cols < 10) {
-        try { term.resize(80, 24); dbg('forced default 80x24'); } catch (e) {}
-      }
-      // Diagnostic: log the actual canvas pixel dimensions. If these are
-      // way smaller than the container, the addon isn't sizing correctly
-      // and we need a refresh.
-      const xtermEl = container.querySelector('.xterm');
-      if (xtermEl) {
-        const xr = xtermEl.getBoundingClientRect();
-        dbg('xterm el size', `${xr.width}x${xr.height}`);
-        const canvas = xtermEl.querySelector('canvas');
-        if (canvas) {
-          dbg('canvas dims', `attr ${canvas.width}x${canvas.height} bb ${canvas.getBoundingClientRect().width}x${canvas.getBoundingClientRect().height}`);
-        }
-      }
-      // Force a refresh in case the canvas didn't get redrawn at the new size.
-      try { term.refresh(0, term.rows - 1); } catch (e) {}
-
-      term.onData(data => {
-        fetch('api/terminals/input', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ terminal_id: tab.terminal_id, data }),
-        }).catch(() => {});
-      });
-
-      tab.term = term;
-      tab.fitAddon = fit;
-
-      // Start backend PTY.
-      dbg('POST /api/terminals/start');
-      const startRes = await fetch('api/terminals/start', {
+      await fetch('api/terminals/start', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -227,47 +199,33 @@
           cols: term.cols || 80,
         }),
       });
-      if (!startRes.ok) {
-        const errText = await startRes.text().catch(() => '<no body>');
-        dbg('start failed', `HTTP ${startRes.status} ${errText}`);
-        _setStatus('start ' + startRes.status + ': ' + errText.slice(0, 60));
-        try { term.write('\r\n\x1b[31m[start failed: HTTP ' + startRes.status + '] ' + errText.slice(0, 200) + '\x1b[0m\r\n'); } catch (e) {}
-        return;
-      }
-      dbg('start ok');
-      _setStatus('connected ' + tab.terminal_id.slice(-6));
-
-      // Subscribe to output SSE.
-      const url = 'api/terminals/output?terminal_id=' + encodeURIComponent(tab.terminal_id);
-      const sse = new EventSource(url, { withCredentials: true });
-      tab.sse = sse;
-      sse.addEventListener('terminal_data', ev => {
-        try {
-          const payload = JSON.parse(ev.data);
-          if (payload.data) term.write(payload.data);
-        } catch (e) { dbg('sse parse error', e.message); }
-      });
-      sse.addEventListener('terminal_closed', () => {
-        _setStatus('terminal exited');
-        try { term.write('\r\n\x1b[33m[terminal exited]\x1b[0m\r\n'); } catch (e) {}
-      });
-      sse.onopen = () => dbg('sse open');
-      sse.onerror = () => { dbg('sse error'); _setStatus('reconnecting…'); };
-
-      // Resize on container changes.
-      if (window.ResizeObserver) {
-        tab._resizeObserver = new ResizeObserver(() => {
-          if (!tab.term || tab.term !== term) return;
-          try { fit && fit.fit(); } catch (e) {}
-          _resizeRemote(tab);
-        });
-        tab._resizeObserver.observe(container);
-      }
-      term.focus();
-    } catch (err) {
-      dbg('FATAL', err && err.message);
-      _setStatus('error: ' + (err && err.message || err));
+    } catch (e) {
+      try { term.write('\r\n\x1b[31m[start failed: ' + (e && e.message) + ']\x1b[0m\r\n'); } catch (_) {}
+      return;
     }
+
+    const url = 'api/terminals/output?terminal_id=' + encodeURIComponent(tab.terminal_id);
+    const sse = new EventSource(url, { withCredentials: true });
+    tab.sse = sse;
+    sse.addEventListener('terminal_data', ev => {
+      try {
+        const payload = JSON.parse(ev.data);
+        if (payload.data) term.write(payload.data);
+      } catch (e) {}
+    });
+    sse.addEventListener('terminal_closed', () => {
+      try { term.write('\r\n\x1b[33m[terminal exited]\x1b[0m\r\n'); } catch (e) {}
+    });
+
+    if (window.ResizeObserver) {
+      tab._resizeObserver = new ResizeObserver(() => {
+        if (!tab.term || tab.term !== term) return;
+        try { fit && fit.fit(); } catch (e) {}
+        _resizeRemote(tab);
+      });
+      tab._resizeObserver.observe(surface);
+    }
+    term.focus();
   }
 
   async function _resizeRemote(tab) {
@@ -283,35 +241,26 @@
     } catch (e) {}
   }
 
-  function _showActiveInstance() {
-    const body = _body();
+  function _showActive() {
+    const body = document.getElementById('terminalBody');
     if (!body) return;
     Array.from(body.querySelectorAll('.terminal-instance')).forEach(el => {
       el.classList.toggle('active', el.id === 'term-inst-' + state.activeId);
     });
     const tab = _activeTab();
     if (tab && tab.fitAddon) {
-      // Double-rAF: wait for the visibility toggle to actually take effect
-      // in layout before refitting.
       requestAnimationFrame(() => requestAnimationFrame(() => {
         try { tab.fitAddon.fit(); } catch (e) {}
         _resizeRemote(tab);
+        if (tab.term) try { tab.term.focus(); } catch (e) {}
       }));
     }
   }
 
-  function renderAll() {
-    renderTabs();
-    _showActiveInstance();
-  }
-
-  // ── tab actions ──────────────────────────────────────────────────────────
+  // ── Tab actions ──────────────────────────────────────────────────────────
 
   async function addTab() {
-    if (!_xtermReady()) {
-      setTimeout(addTab, 200);
-      return;
-    }
+    if (!_xtermReady()) { setTimeout(addTab, 200); return; }
     const tab = {
       terminal_id: newTerminalId(),
       title: `T${state.tabs.length + 1}`,
@@ -320,33 +269,26 @@
     state.activeId = tab.terminal_id;
     saveState();
     renderTabs();
-    // Pre-create the container so _bootInstance's _showActiveInstance call
-    // finds the right element to mark .active.
     _ensureInstanceContainer(tab.terminal_id);
     await _bootInstance(tab);
-    if (tab.term) tab.term.focus();
   }
 
   function switchTab(terminal_id) {
     state.activeId = terminal_id;
     saveState();
     renderTabs();
-    _showActiveInstance();
-    const tab = _activeTab();
-    if (tab && tab.term) tab.term.focus();
+    _showActive();
   }
 
-  async function closeTab(terminal_id) {
+  function closeTab(terminal_id) {
     const idx = state.tabs.findIndex(t => t.terminal_id === terminal_id);
     if (idx < 0) return;
     const tab = state.tabs[idx];
-    // Tear down runtime resources
     try { if (tab.sse) tab.sse.close(); } catch (e) {}
     try { if (tab._resizeObserver) tab._resizeObserver.disconnect(); } catch (e) {}
     try { if (tab.term) tab.term.dispose(); } catch (e) {}
     const el = document.getElementById('term-inst-' + terminal_id);
     if (el) el.remove();
-    // Tell backend to kill the PTY
     fetch('api/terminals/close', {
       method: 'POST',
       credentials: 'same-origin',
@@ -360,14 +302,15 @@
     }
     saveState();
     renderTabs();
-    _showActiveInstance();
+    _showActive();
   }
 
-  // ── panel open / close / maximize ────────────────────────────────────────
+  // ── Panel open / close / maximize ────────────────────────────────────────
 
-  function isOpen() {
-    const p = _panel();
-    return !!(p && !p.hidden);
+  function _panel() { return document.getElementById('terminalPanel'); }
+  function isOpen() { const p = _panel(); return !!(p && !p.hidden); }
+  function isMaximized() {
+    return document.body.classList.contains('terminal-panel-maximized');
   }
 
   async function setOpen(open) {
@@ -378,23 +321,15 @@
     if (open) {
       const w = parseInt(localStorage.getItem(STORAGE_WIDTH) || '', 10);
       if (w > 0 && !isMaximized()) p.style.width = w + 'px';
-      // Wait for the panel to be laid out (the `hidden` attribute change
-      // hasn't propagated to the layout tree yet) before booting any
-      // xterm.js instances — they need real container dimensions.
-      await _twoFrames();
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       if (state.tabs.length === 0) {
-        // First open ever — spawn a terminal.
         addTab();
       } else {
         renderTabs();
         for (const t of state.tabs) {
-          if (!t.term) {
-            // sequential, awaited so each terminal gets a real layout pass
-            // eslint-disable-next-line no-await-in-loop
-            await _bootInstance(t);
-          }
+          if (!t.term) await _bootInstance(t);
         }
-        _showActiveInstance();
+        _showActive();
       }
     }
     try { localStorage.setItem(STORAGE_OPEN, open ? '1' : '0'); } catch (e) {}
@@ -403,14 +338,11 @@
   function toggleTerminalPanel(force) {
     const next = typeof force === 'boolean' ? force : !isOpen();
     if (next && typeof window.toggleBrowserPanel === 'function') {
-      // Mutual exclusion — see matching comment in browser.js.
+      // Browser and terminal share the same right-side slot on narrow
+      // viewports — mutually exclude so neither is hidden behind the other.
       window.toggleBrowserPanel(false);
     }
     setOpen(next);
-  }
-
-  function isMaximized() {
-    return document.body.classList.contains('terminal-panel-maximized');
   }
 
   function setMaximized(max) {
@@ -418,20 +350,18 @@
     const btn = document.getElementById('terminalMaximizeBtn');
     if (btn) {
       btn.title = max ? 'Restore' : 'Maximize';
-      btn.setAttribute('aria-label', max ? 'Restore' : 'Maximize');
       btn.innerHTML = max
         ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'
         : '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     }
     try { localStorage.setItem(STORAGE_MAX, max ? '1' : '0'); } catch (e) {}
-    // Resize the active terminal after the layout change
     setTimeout(() => {
-      const t = _activeTab();
-      if (t && t.fitAddon) {
-        try { t.fitAddon.fit(); } catch (e) {}
-        _resizeRemote(t);
+      const tab = _activeTab();
+      if (tab && tab.fitAddon) {
+        try { tab.fitAddon.fit(); } catch (e) {}
+        _resizeRemote(tab);
       }
-    }, 80);
+    }, 60);
   }
 
   function terminalMaximizeToggle() {
@@ -439,7 +369,7 @@
     setMaximized(!isMaximized());
   }
 
-  // ── resize handle ────────────────────────────────────────────────────────
+  // ── Drag-resize ──────────────────────────────────────────────────────────
 
   function initResize() {
     const handle = document.getElementById('terminalPanelResize');
@@ -453,9 +383,7 @@
       const next = Math.min(window.innerWidth * 0.9, Math.max(360, startW + dx));
       panel.style.width = next + 'px';
       const t = _activeTab();
-      if (t && t.fitAddon) {
-        try { t.fitAddon.fit(); } catch (e) {}
-      }
+      if (t && t.fitAddon) { try { t.fitAddon.fit(); } catch (e) {} }
     }
     function onUp() {
       if (!dragging) return;
@@ -484,8 +412,6 @@
     handle.addEventListener('mousedown', onDown);
     handle.addEventListener('touchstart', onDown, { passive: false });
   }
-
-  // ── boot ─────────────────────────────────────────────────────────────────
 
   function init() {
     if (!document.getElementById('terminalPanel')) return;
