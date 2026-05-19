@@ -2525,27 +2525,16 @@ main.main > #mainMemory,
 main.main > #mainTasks,
 main.main > #mainKanban,
 main.main > #mainWorkspaces,
-main.main > #mainBrowser,
 main.main > #mainProfiles,
 main.main > #mainInsights,
 main.main > #mainLogs{display:none;}
-main.main:not(.showing-settings):not(.showing-skills):not(.showing-memory):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-browser):not(.showing-profiles):not(.showing-insights):not(.showing-logs) > #mainChat{display:flex;}
+main.main:not(.showing-settings):not(.showing-skills):not(.showing-memory):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs) > #mainChat{display:flex;}
 main.main.showing-settings > #mainSettings{display:flex;overflow-y:auto;}
 main.main.showing-skills > #mainSkills{display:flex;}
 main.main.showing-memory > #mainMemory{display:flex;}
 main.main.showing-tasks > #mainTasks{display:flex;}
 main.main.showing-kanban > #mainKanban{display:flex;overflow-y:auto;}
 main.main.showing-workspaces > #mainWorkspaces{display:flex;}
-main.main.showing-browser > #mainBrowser{display:flex;}
-/* Fork-only: on Browser view, show #mainChat alongside #mainBrowser so the
-   user keeps the full chat (messages + composer + everything) on the left
-   while previewing apps in the middle and using a terminal on the right.
-   Flip the column-default main flex direction to row for this view. */
-main.main.showing-browser{flex-direction:row;}
-main.main.showing-browser > #mainChat{display:flex;flex:0 0 420px;min-width:0;min-height:0;border-right:1px solid var(--border);}
-main.main.showing-browser > #mainBrowser{flex:1;min-width:0;}
-@media (max-width:1100px){main.main.showing-browser > #mainChat{flex:0 0 360px;}}
-@media (max-width:900px){main.main.showing-browser > #mainChat{display:none;}}
 main.main.showing-profiles > #mainProfiles{display:flex;}
 main.main.showing-logs > #mainLogs{display:flex;}
 #mainSettings{overflow-y:auto;}

@@ -1,54 +1,64 @@
 /**
- * Browser panel — minimal in-app web view for previewing sandbox-local apps.
+ * Browser panel — toggleable right-side column for previewing sandbox-local
+ * apps and any iframe-friendly site. Lives alongside the chat (not as a
+ * separate rail "view"), so the user can chat AND browse simultaneously.
  *
- * URLs of the form `localhost:N`, `127.0.0.1:N`, or bare `:N` get auto-rewritten
- * to `https://N-<sandbox-id>.e2b.app` (E2B's per-port public URL convention)
- * so apps you run inside the sandbox can be previewed in the panel without
- * an SSH tunnel. Bare domains get `https://` prepended; anything else is
- * routed through DuckDuckGo as a search query.
+ * Public API (used by inline onclick handlers in index.html):
+ *   toggleBrowserPanel(force)        — open/close the panel
+ *   browserMaximizeToggle()          — toggle full-takeover maximize
+ *   browserNavigate(rawUrl)          — load a URL in the active tab
+ *   browserReload()                  — reload active tab
+ *   browserAddTab()                  — open a new blank tab
+ *   browserPopOut()                  — open active tab's URL in a new window
+ *   browserOpenInDesktopFirefox()    — copy URL + open noVNC desktop
  *
- * State (tabs + active tab) is persisted in localStorage so reloads survive.
+ * URL rewriting: `3000`, `localhost:3000`, `:3000`, `127.0.0.1:3000` →
+ * `https://3000-<sandbox-id>.e2b.app` (E2B's per-port subdomain). Anything
+ * else with a dot gets `https://` prepended; pure search terms route through
+ * DuckDuckGo. Sites that block iframing (X-Frame-Options/frame-ancestors)
+ * will refuse to render — use the Firefox button to handoff to noVNC.
  *
- * Limitations:
- *  - Sites that send `X-Frame-Options: DENY` or strict frame-ancestors CSPs
- *    will refuse to render in the iframe — use the "Open in Firefox" button
- *    which opens the noVNC desktop in a new browser tab so you can paste the
- *    URL into the desktop's Firefox.
- *  - The panel lives in the WebUI sidebar (narrow). Use "Pop out" to open the
- *    current tab's URL in a full browser window.
+ * Persistence: tabs in `hermes-browser-state-v1`, panel open/closed/width/
+ * maximized in `hermes-browser-panel-*`.
  */
 
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'hermes-browser-state-v1';
+  // ── State ────────────────────────────────────────────────────────────────
 
-  function loadState() {
+  const STORAGE_TABS = 'hermes-browser-state-v1';
+  const STORAGE_OPEN = 'hermes-browser-panel-open';
+  const STORAGE_WIDTH = 'hermes-browser-panel-width';
+  const STORAGE_MAX = 'hermes-browser-panel-maximized';
+
+  function loadTabsState() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_TABS);
       if (raw) return JSON.parse(raw);
-    } catch (e) { /* fall through to default */ }
+    } catch (e) {}
     return {
       tabs: [{ id: newTabId(), title: 'New tab', url: '' }],
       activeTabId: null,
     };
   }
 
-  function saveState() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  function saveTabsState() {
+    try { localStorage.setItem(STORAGE_TABS, JSON.stringify(state)); } catch (e) {}
   }
 
   function newTabId() {
     return 't' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   }
 
-  const state = loadState();
+  const state = loadTabsState();
   if (!state.activeTabId && state.tabs.length > 0) {
     state.activeTabId = state.tabs[0].id;
   }
 
+  // ── URL helpers ──────────────────────────────────────────────────────────
+
   function getSandboxId() {
-    // E2B's per-port hostname format: <port>-<sandbox-id>.e2b.{app,dev}
     const m = location.host.match(/^(\d+)-([a-z0-9]+)\.e2b\.(app|dev)$/i);
     return m ? m[2] : null;
   }
@@ -57,13 +67,9 @@
     const sid = getSandboxId();
     const raw = String(input || '').trim();
     if (!raw) return '';
-
-    // Plain port number → preview that port on the sandbox
     if (/^\d{2,5}$/.test(raw) && sid) {
       return `https://${raw}-${sid}.e2b.app`;
     }
-
-    // localhost:N / 127.0.0.1:N / :N (with optional scheme and path)
     const localRe = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|)\s*:(\d+)(\/.*)?$/i;
     const lm = raw.match(localRe);
     if (lm && sid) {
@@ -71,16 +77,8 @@
       const path = lm[2] || '';
       return `https://${port}-${sid}.e2b.app${path}`;
     }
-
-    // Already has http:// or https://
     if (/^https?:\/\//i.test(raw)) return raw;
-
-    // Looks like a domain (has a dot, no spaces) → assume https
-    if (/\./.test(raw) && !/\s/.test(raw)) {
-      return `https://${raw}`;
-    }
-
-    // Anything else → search
+    if (/\./.test(raw) && !/\s/.test(raw)) return `https://${raw}`;
     return `https://duckduckgo.com/?q=${encodeURIComponent(raw)}`;
   }
 
@@ -88,15 +86,10 @@
     return state.tabs.find(t => t.id === state.activeTabId) || state.tabs[0];
   }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[<>&"']/g, c => ({
-      '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;',
-    })[c]);
-  }
+  // ── Rendering ────────────────────────────────────────────────────────────
 
-  // ---------- render ----------
-
-  function _renderTabsInto(strip, opts = {}) {
+  function renderTabs() {
+    const strip = document.getElementById('browserTabs');
     if (!strip) return;
     strip.innerHTML = '';
 
@@ -126,21 +119,12 @@
       strip.appendChild(btn);
     });
 
-    if (!opts.skipAddButton) {
-      const add = document.createElement('button');
-      add.className = 'browser-tab-add';
-      add.textContent = '+';
-      add.title = 'New tab';
-      add.addEventListener('click', addTab);
-      strip.appendChild(add);
-    }
-  }
-
-  function renderTabs() {
-    // Main tab strip (top of #mainBrowser, has the + button).
-    _renderTabsInto(document.getElementById('browserTabs'));
-    // Sidebar list (in #panelBrowser, no + button — use the + in panel-head).
-    _renderTabsInto(document.getElementById('browserSidebarTabs'), { skipAddButton: true });
+    const add = document.createElement('button');
+    add.className = 'browser-tab-add';
+    add.textContent = '+';
+    add.title = 'New tab';
+    add.addEventListener('click', addTab);
+    strip.appendChild(add);
   }
 
   function renderUrlBar() {
@@ -162,7 +146,7 @@
       empty.innerHTML =
         '<div><strong>Preview anything from your sandbox.</strong></div>' +
         '<div>Type <code>3000</code>, <code>localhost:8000</code>, or any URL.</div>' +
-        '<div style="margin-top:8px">Sites that block iframes (Google, GitHub, etc.) won\'t load here — use <em>Open in Firefox</em> below.</div>';
+        '<div style="margin-top:8px">Sites that block iframes (Google, GitHub, banks) won\'t load here — use <em>Open in Firefox</em> in the URL bar.</div>';
       wrap.appendChild(empty);
       return;
     }
@@ -181,10 +165,10 @@
         const doc = iframe.contentDocument;
         if (doc && doc.title) {
           tab.title = doc.title;
-          saveState();
+          saveTabsState();
           renderTabs();
         }
-      } catch (e) { /* cross-origin: leave title as-is */ }
+      } catch (e) {}
     });
     wrap.appendChild(iframe);
   }
@@ -195,7 +179,7 @@
     renderIframe();
   }
 
-  // ---------- actions ----------
+  // ── Tab actions ──────────────────────────────────────────────────────────
 
   function navigate(rawInput) {
     const tab = getActiveTab();
@@ -203,21 +187,18 @@
     const url = rewriteUrl(rawInput);
     tab.url = url;
     if (url) {
-      try {
-        tab.title = new URL(url).hostname;
-      } catch (e) {
-        tab.title = url.slice(0, 24);
-      }
+      try { tab.title = new URL(url).hostname; }
+      catch (e) { tab.title = url.slice(0, 24); }
     } else {
       tab.title = 'New tab';
     }
-    saveState();
+    saveTabsState();
     renderAll();
   }
 
   function switchTab(id) {
     state.activeTabId = id;
-    saveState();
+    saveTabsState();
     renderAll();
   }
 
@@ -225,7 +206,7 @@
     const id = newTabId();
     state.tabs.push({ id, title: 'New tab', url: '' });
     state.activeTabId = id;
-    saveState();
+    saveTabsState();
     renderAll();
     setTimeout(() => {
       const input = document.getElementById('browserUrlInput');
@@ -244,7 +225,7 @@
       const newIdx = Math.max(0, Math.min(idx, state.tabs.length - 1));
       state.activeTabId = state.tabs[newIdx].id;
     }
-    saveState();
+    saveTabsState();
     renderAll();
   }
 
@@ -263,255 +244,148 @@
     const sid = getSandboxId();
     const tab = getActiveTab();
     if (tab && tab.url) {
-      // Best-effort: copy the URL so the user can paste it into Firefox.
       try { navigator.clipboard.writeText(tab.url); } catch (e) {}
     }
-    if (sid) {
-      window.open(`https://6080-${sid}.e2b.app`, '_blank', 'noopener');
-    }
+    if (sid) window.open(`https://6080-${sid}.e2b.app`, '_blank', 'noopener');
   }
 
-  // ---------- wire up ----------
+  // ── Panel open / close / maximize ────────────────────────────────────────
+
+  function _panel() {
+    return document.getElementById('browserPanel');
+  }
+
+  function isOpen() {
+    const p = _panel();
+    return !!(p && !p.hidden);
+  }
+
+  function setOpen(open) {
+    const p = _panel();
+    if (!p) return;
+    p.hidden = !open;
+    document.body.classList.toggle('browser-panel-open', !!open);
+    if (open) {
+      // Apply saved width
+      const w = parseInt(localStorage.getItem(STORAGE_WIDTH) || '', 10);
+      if (w > 0 && !isMaximized()) p.style.width = w + 'px';
+      renderAll();
+      // Focus the URL bar so the user can just type to navigate
+      setTimeout(() => {
+        const input = document.getElementById('browserUrlInput');
+        if (input) input.focus();
+      }, 50);
+    }
+    try { localStorage.setItem(STORAGE_OPEN, open ? '1' : '0'); } catch (e) {}
+  }
+
+  function toggleBrowserPanel(force) {
+    const next = typeof force === 'boolean' ? force : !isOpen();
+    setOpen(next);
+  }
+
+  function isMaximized() {
+    return document.body.classList.contains('browser-panel-maximized');
+  }
+
+  function setMaximized(max) {
+    document.body.classList.toggle('browser-panel-maximized', !!max);
+    const btn = document.getElementById('browserMaximizeBtn');
+    if (btn) {
+      btn.title = max ? 'Restore' : 'Maximize';
+      btn.setAttribute('aria-label', max ? 'Restore' : 'Maximize');
+      // Swap the SVG between maximize and minimize glyphs
+      btn.innerHTML = max
+        ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+    }
+    try { localStorage.setItem(STORAGE_MAX, max ? '1' : '0'); } catch (e) {}
+  }
+
+  function browserMaximizeToggle() {
+    if (!isOpen()) setOpen(true);
+    setMaximized(!isMaximized());
+  }
+
+  // ── Resize (drag the left edge) ──────────────────────────────────────────
+
+  function initResize() {
+    const handle = document.getElementById('browserPanelResize');
+    const panel = _panel();
+    if (!handle || !panel) return;
+    let startX = 0;
+    let startW = 0;
+    let dragging = false;
+
+    function onMove(e) {
+      if (!dragging) return;
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      const dx = startX - x;
+      const next = Math.min(window.innerWidth * 0.9, Math.max(320, startW + dx));
+      panel.style.width = next + 'px';
+    }
+
+    function onUp() {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchend', onUp);
+      try { localStorage.setItem(STORAGE_WIDTH, String(panel.offsetWidth)); } catch (e) {}
+    }
+
+    function onDown(e) {
+      if (isMaximized()) return;
+      dragging = true;
+      startX = e.touches ? e.touches[0].clientX : e.clientX;
+      startW = panel.offsetWidth;
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchend', onUp);
+      e.preventDefault();
+    }
+
+    handle.addEventListener('mousedown', onDown);
+    handle.addEventListener('touchstart', onDown, { passive: false });
+  }
+
+  // ── URL bar input wiring ─────────────────────────────────────────────────
+
+  function initUrlBar() {
+    const input = document.getElementById('browserUrlInput');
+    if (!input) return;
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        navigate(input.value);
+      }
+    });
+  }
+
+  // ── Boot ─────────────────────────────────────────────────────────────────
 
   function init() {
-    const panel = document.getElementById('panelBrowser');
-    if (!panel) return;
-    renderAll();
-
-    const input = document.getElementById('browserUrlInput');
-    if (input) {
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          navigate(input.value);
-        }
-      });
-    }
+    if (!document.getElementById('browserPanel')) return;
+    initResize();
+    initUrlBar();
+    // Restore prior state
+    const wasOpen = localStorage.getItem(STORAGE_OPEN) === '1';
+    const wasMax = localStorage.getItem(STORAGE_MAX) === '1';
+    if (wasOpen) setOpen(true);
+    if (wasMax) setMaximized(true);
   }
 
-  // ---- Terminal (right aside) -------------------------------------------
-  // Uses the existing /api/terminal/* endpoints (start, input, resize,
-  // close + SSE output stream). Each chat session has at most one terminal;
-  // multi-terminal would require a `terminal_id` param in the backend.
-
-  const TERMINAL = {
-    term: null,
-    fitAddon: null,
-    sessionId: null,
-    sse: null,
-    resizeObserver: null,
-  };
-
-  function _ttySid() {
-    return (
-      (window.S && window.S.session && window.S.session.session_id) || null
-    );
-  }
-
-  function _ttyEls() {
-    return {
-      container: document.getElementById('browserTerminalContainer'),
-      empty: document.getElementById('browserTerminalEmpty'),
-      xterm: document.getElementById('browserTerminalXterm'),
-      status: document.getElementById('browserTerminalStatus'),
-    };
-  }
-
-  function _xtermReady() {
-    return typeof window.Terminal === 'function';
-  }
-
-  function _ensureTerm() {
-    const { xterm } = _ttyEls();
-    if (TERMINAL.term || !xterm || !_xtermReady()) return TERMINAL.term;
-    const term = new window.Terminal({
-      cursorBlink: true,
-      fontSize: 12,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-      theme: { background: '#0a0a0e', foreground: '#e6e6f0' },
-      scrollback: 5000,
-      convertEol: true,
-    });
-    const fit = window.FitAddon ? new window.FitAddon.FitAddon() : null;
-    if (fit) term.loadAddon(fit);
-    if (window.WebLinksAddon) {
-      term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
-    }
-    term.open(xterm);
-    if (fit) {
-      try { fit.fit(); } catch (e) {}
-    }
-    term.onData(data => {
-      if (!TERMINAL.sessionId) return;
-      fetch('api/terminal/input', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: TERMINAL.sessionId, data }),
-      }).catch(() => {});
-    });
-    TERMINAL.term = term;
-    TERMINAL.fitAddon = fit;
-    if (window.ResizeObserver && !TERMINAL.resizeObserver) {
-      TERMINAL.resizeObserver = new ResizeObserver(() => {
-        try { fit && fit.fit(); } catch (e) {}
-        _resizeRemote();
-      });
-      TERMINAL.resizeObserver.observe(xterm);
-    }
-    return term;
-  }
-
-  async function _resizeRemote() {
-    if (!TERMINAL.term || !TERMINAL.sessionId) return;
-    const { rows, cols } = TERMINAL.term;
-    try {
-      await fetch('api/terminal/resize', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: TERMINAL.sessionId, rows, cols }),
-      });
-    } catch (e) {}
-  }
-
-  function _setStatus(s) {
-    const { status } = _ttyEls();
-    if (status) status.textContent = s || '';
-  }
-
-  function _disconnectSse() {
-    if (TERMINAL.sse) {
-      try { TERMINAL.sse.close(); } catch (e) {}
-      TERMINAL.sse = null;
-    }
-  }
-
-  function _connectSse(sid) {
-    _disconnectSse();
-    const url = 'api/terminal/output?session_id=' + encodeURIComponent(sid);
-    const source = new EventSource(url, { withCredentials: true });
-    TERMINAL.sse = source;
-    source.addEventListener('terminal_data', ev => {
-      try {
-        const payload = JSON.parse(ev.data);
-        if (payload.data && TERMINAL.term) TERMINAL.term.write(payload.data);
-      } catch (e) {}
-    });
-    source.addEventListener('terminal_exit', () => {
-      _setStatus('terminal exited');
-    });
-    source.addEventListener('terminal_error', ev => {
-      let msg = 'terminal error';
-      try { msg = (JSON.parse(ev.data) || {}).error || msg; } catch (e) {}
-      _setStatus(msg);
-    });
-    source.onerror = () => _setStatus('disconnected — will reconnect');
-    source.onopen = () => _setStatus('connected to session ' + sid.slice(0, 8));
-  }
-
-  async function initBrowserTerminal(opts = {}) {
-    const { empty, xterm } = _ttyEls();
-    const sid = _ttySid();
-    if (!sid) {
-      if (empty) empty.style.display = 'flex';
-      if (xterm) xterm.classList.remove('active');
-      _disconnectSse();
-      TERMINAL.sessionId = null;
-      _setStatus('');
-      return;
-    }
-    if (empty) empty.style.display = 'none';
-    if (xterm) xterm.classList.add('active');
-
-    if (!_xtermReady()) {
-      _setStatus('xterm.js still loading...');
-      setTimeout(() => initBrowserTerminal(opts), 250);
-      return;
-    }
-
-    const term = _ensureTerm();
-    if (!term) return;
-
-    // Re-attach if session changed
-    const restart = opts.restart || TERMINAL.sessionId !== sid;
-    if (restart) {
-      TERMINAL.sessionId = sid;
-      try {
-        await fetch('api/terminal/start', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: sid,
-            rows: term.rows,
-            cols: term.cols,
-            restart: !!opts.restart,
-          }),
-        });
-      } catch (e) {
-        _setStatus('start failed: ' + e.message);
-        return;
-      }
-      _connectSse(sid);
-      if (TERMINAL.fitAddon) {
-        try { TERMINAL.fitAddon.fit(); } catch (e) {}
-      }
-      _resizeRemote();
-    }
-  }
-
-  function browserTerminalRestart() {
-    initBrowserTerminal({ restart: true });
-  }
-
-  // ---- Wire panel-switch hook -------------------------------------------
-  // Only initialize sessions + terminal when the Browser panel actually
-  // becomes active, and tear down terminal SSE when the user leaves.
-
-  const _origSwitchPanel = window.switchPanel;
-  if (typeof _origSwitchPanel === 'function') {
-    window.switchPanel = async function (name, opts) {
-      const result = await _origSwitchPanel(name, opts);
-      document.body.classList.toggle('on-browser-view', name === 'browser');
-      if (name === 'browser') {
-        // Force the sidebar panel-view to be the chat session list so the
-        // user can switch sessions even though the rail-button stays on
-        // Browser. The original switchPanel only activates the matching
-        // panel-view; we hide #panelBrowser via CSS and promote #panelChat
-        // to active here.
-        const panels = document.querySelectorAll('.panel-view');
-        panels.forEach(p => p.classList.remove('active'));
-        const chatPanel = document.getElementById('panelChat');
-        if (chatPanel) chatPanel.classList.add('active');
-        initBrowserTerminal();
-      }
-      return result;
-    };
-  }
-
-  // Re-bind the terminal whenever the active chat session changes, so
-  // clicking a session in the sidebar (which calls loadSession) makes the
-  // terminal pane attach to the right PTY.
-  const _origLoadSession = window.loadSession;
-  if (typeof _origLoadSession === 'function') {
-    window.loadSession = async function (sid) {
-      const result = await _origLoadSession(sid);
-      if (document.body.classList.contains('on-browser-view')) {
-        setTimeout(() => initBrowserTerminal(), 100);
-      }
-      return result;
-    };
-  }
-
-  // ---- Expose globals + init --------------------------------------------
-
+  window.toggleBrowserPanel = toggleBrowserPanel;
+  window.browserMaximizeToggle = browserMaximizeToggle;
   window.browserNavigate = navigate;
   window.browserAddTab = addTab;
   window.browserReload = reloadActiveTab;
   window.browserPopOut = popOutActiveTab;
   window.browserOpenInDesktopFirefox = openInDesktopFirefox;
-  window.browserTerminalRestart = browserTerminalRestart;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

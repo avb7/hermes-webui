@@ -1,182 +1,74 @@
-/* Browser panel — minimal in-app web view for previewing sandbox-local apps.
-   The real UI lives in #mainBrowser (center area), structured as a 3-column
-   workspace: chat sessions on the left, browser in the middle, terminal on
-   the right. #panelBrowser is the rail-slot sidebar that lists open browser
-   tabs as a quick switcher. */
+/* Browser panel — toggleable column that sits alongside the chat in the
+   .layout grid. Modeled on the workspace rightpanel pattern (.rightpanel +
+   .resize-handle + .workspace-panel-edge-toggle).
+   - Hidden by default; show by toggling [hidden] off via toggleBrowserPanel().
+   - Drag the left edge to resize.
+   - Maximize covers the entire main area (chat + sidebar + workspace).
+   - State (open/closed, width, maximized) persists in localStorage. */
 
-#mainBrowser {
+.browserpanel {
+  position: relative;
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--bg);
-}
-
-.browser-workspace {
-  display: flex;
-  flex-direction: row;
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-}
-
-.browser-aside {
-  display: flex;
-  flex-direction: column;
-  background: var(--panel, var(--bg));
   flex-shrink: 0;
-  min-height: 0;
-}
-
-.browser-aside-right {
-  width: 380px;
+  width: 520px;
+  min-width: 320px;
+  max-width: 90vw;
+  background: var(--panel, var(--bg));
   border-left: 1px solid var(--border);
-}
-
-.browser-aside-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.browser-aside-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-  padding: 0;
-}
-
-.browser-aside-btn:hover {
-  color: var(--text);
-  background: var(--input-bg);
-}
-
-.browser-center {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
   overflow: hidden;
-}
-
-/* ---- Terminal (right) ---- */
-
-.browser-terminal-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   min-height: 0;
-  background: #0a0a0e;
-  overflow: hidden;
 }
 
-.browser-terminal-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  color: var(--muted);
-  font-size: 11px;
-  text-align: center;
-  line-height: 1.5;
-}
-
-.browser-terminal-xterm {
-  flex: 1;
-  min-height: 0;
-  display: none;
-  padding: 6px 0 0 6px;
-}
-
-.browser-terminal-xterm.active {
-  display: block;
-}
-
-.browser-terminal-xterm .xterm {
-  height: 100%;
-}
-
-.browser-terminal-status {
-  padding: 4px 10px;
-  font-size: 10px;
-  color: var(--muted);
-  border-top: 1px solid var(--border);
-  background: var(--panel, var(--bg));
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* On Browser view, hide the rail-button panel slot (#panelBrowser shows the
-   browser tab list, which is also rendered inline at the top of the
-   workspace). The sidebar wrapper itself stays visible because we force
-   #panelChat to be active there — see browser.js switchPanel hook. */
-body.on-browser-view #panelBrowser {
+.browserpanel[hidden] {
   display: none;
 }
 
-/* ---- Responsive ---- */
-
-@media (max-width: 1100px) {
-  .browser-aside-right { width: 320px; }
+.browserpanel .resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  margin-left: -3px;
+  cursor: ew-resize;
+  z-index: 5;
 }
 
-@media (max-width: 900px) {
-  .browser-aside-right { display: none; }
+.browserpanel .resize-handle:hover,
+.browserpanel .resize-handle:active {
+  background: var(--accent, rgba(127, 127, 127, 0.2));
 }
 
-#panelBrowser {
-  padding: 8px 0;
-}
+/* ---- Header (tab strip + actions) ------------------------------------ */
 
-.browser-sidebar-tabs {
+.browserpanel-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 0 8px;
-  overflow-y: auto;
-}
-
-.browser-sidebar-tabs .browser-tab {
-  max-width: none;
-  width: 100%;
-  justify-content: space-between;
-}
-
-.browser-sidebar-tabs .browser-tab-title {
-  max-width: none;
-  flex: 1;
-}
-
-.browser-tabs {
-  display: flex;
-  flex-direction: row;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 36px;
+}
+
+.browserpanel-tabs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: thin;
+  min-width: 0;
+}
+
+.browserpanel-actions {
+  display: flex;
+  gap: 4px;
   flex-shrink: 0;
 }
+
+/* ---- Tabs ------------------------------------------------------------- */
 
 .browser-tab {
   display: inline-flex;
@@ -189,7 +81,7 @@ body.on-browser-view #panelBrowser {
   border-radius: 4px;
   font-size: 11px;
   cursor: pointer;
-  max-width: 140px;
+  max-width: 160px;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -203,7 +95,7 @@ body.on-browser-view #panelBrowser {
 .browser-tab-title {
   text-overflow: ellipsis;
   overflow: hidden;
-  max-width: 110px;
+  max-width: 130px;
 }
 
 .browser-tab-close {
@@ -220,8 +112,8 @@ body.on-browser-view #panelBrowser {
 }
 
 .browser-tab-add {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -240,7 +132,9 @@ body.on-browser-view #panelBrowser {
   color: var(--text);
 }
 
-.browser-url-bar {
+/* ---- URL bar --------------------------------------------------------- */
+
+.browserpanel .browser-url-bar {
   display: flex;
   gap: 4px;
   padding: 6px 8px;
@@ -250,7 +144,7 @@ body.on-browser-view #panelBrowser {
 }
 
 .browser-url-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 26px;
@@ -286,7 +180,9 @@ body.on-browser-view #panelBrowser {
   border-color: var(--accent, var(--text));
 }
 
-.browser-iframe-wrap {
+/* ---- Iframe + empty state -------------------------------------------- */
+
+.browserpanel .browser-iframe-wrap {
   flex: 1;
   position: relative;
   background: var(--bg, #fff);
@@ -294,7 +190,7 @@ body.on-browser-view #panelBrowser {
   min-height: 0;
 }
 
-.browser-iframe-wrap iframe {
+.browserpanel .browser-iframe-wrap iframe {
   width: 100%;
   height: 100%;
   border: none;
@@ -323,30 +219,77 @@ body.on-browser-view #panelBrowser {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.browser-foot {
-  display: flex;
-  gap: 4px;
-  padding: 6px 8px;
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  flex-shrink: 0;
-}
+/* ---- Edge toggle (shown when panel is hidden) ------------------------ */
+/* Positioned just below the workspace edge toggle. Disappears once the
+   panel is open. */
 
-.browser-foot-btn {
-  flex: 1;
-  background: var(--input-bg);
+.browser-panel-edge-toggle {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(8px);
+  width: 22px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel, var(--bg));
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 4px 8px;
+  border-right: none;
+  border-radius: 4px 0 0 4px;
   cursor: pointer;
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  z-index: 20;
 }
 
-.browser-foot-btn:hover {
+.browser-panel-edge-toggle:hover {
   color: var(--text);
-  background: var(--panel);
+  background: var(--input-bg);
+}
+
+body.browser-panel-open .browser-panel-edge-toggle {
+  display: none;
+}
+
+/* ---- Maximized state -------------------------------------------------- */
+/* "Full takeover" mode: hide the sidebar, main, and workspace; let the
+   browserpanel fill the entire .layout next to the rail. */
+
+body.browser-panel-maximized .sidebar,
+body.browser-panel-maximized main.main,
+body.browser-panel-maximized .rightpanel,
+body.browser-panel-maximized .workspace-panel-edge-toggle {
+  display: none !important;
+}
+
+body.browser-panel-maximized .browserpanel {
+  flex: 1;
+  width: auto;
+  max-width: none;
+  border-left: none;
+}
+
+body.browser-panel-maximized .browserpanel .resize-handle {
+  display: none;
+}
+
+/* ---- Mobile ----------------------------------------------------------- */
+/* On narrow screens, the panel takes the whole viewport when open. */
+
+@media (max-width: 640px) {
+  .browserpanel {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    max-width: none;
+    z-index: 100;
+    border-left: none;
+  }
+  .browserpanel .resize-handle {
+    display: none;
+  }
+  .browser-panel-edge-toggle {
+    width: 28px;
+    height: 44px;
+  }
 }
