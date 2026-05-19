@@ -95,9 +95,14 @@ def _generate_vapid_keys() -> dict:
     if not _CRYPTO:
         raise RuntimeError("cryptography not installed")
     pk = ec.generate_private_key(ec.SECP256R1())
+    # SEC1 / TraditionalOpenSSL format ("-----BEGIN EC PRIVATE KEY-----")
+    # is the canonical VAPID private-key format and what py_vapid /
+    # pywebpush deserialize without issue. PKCS#8 PEM ("-----BEGIN PRIVATE
+    # KEY-----") fails to load via py_vapid's wrapper with a confusing
+    # "EC curves with explicit parameters" error.
     private_pem = pk.private_bytes(
         encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
         encryption_algorithm=serialization.NoEncryption(),
     ).decode("ascii")
     pub_bytes = pk.public_key().public_bytes(
