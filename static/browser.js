@@ -347,6 +347,12 @@
 
   function toggleBrowserPanel(force) {
     const next = typeof force === 'boolean' ? force : !isOpen();
+    if (next && typeof window.toggleTerminalPanel === 'function') {
+      // Mutual exclusion: the viewport almost never has room for both
+      // a 520px browser panel AND a 560px terminal panel at once. Close
+      // the terminal so the user actually sees the panel they just opened.
+      window.toggleTerminalPanel(false);
+    }
     setOpen(next);
   }
 

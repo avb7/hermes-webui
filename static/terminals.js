@@ -391,6 +391,10 @@
 
   function toggleTerminalPanel(force) {
     const next = typeof force === 'boolean' ? force : !isOpen();
+    if (next && typeof window.toggleBrowserPanel === 'function') {
+      // Mutual exclusion — see matching comment in browser.js.
+      window.toggleBrowserPanel(false);
+    }
     setOpen(next);
   }
 
