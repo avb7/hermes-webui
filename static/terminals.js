@@ -185,12 +185,23 @@
         try { fit.fit(); dbg('after fit', `rows=${term.rows} cols=${term.cols}`); }
         catch (e) { dbg('fit() threw', e.message); }
       }
-      // Hard fallback: if fit produced 0×0 (e.g. addon missing or panel
-      // still hidden), force a reasonable size so backend bash actually
-      // gets a sane TERM size and prints its prompt.
       if (!term.rows || !term.cols || term.rows < 2 || term.cols < 10) {
         try { term.resize(80, 24); dbg('forced default 80x24'); } catch (e) {}
       }
+      // Diagnostic: log the actual canvas pixel dimensions. If these are
+      // way smaller than the container, the addon isn't sizing correctly
+      // and we need a refresh.
+      const xtermEl = container.querySelector('.xterm');
+      if (xtermEl) {
+        const xr = xtermEl.getBoundingClientRect();
+        dbg('xterm el size', `${xr.width}x${xr.height}`);
+        const canvas = xtermEl.querySelector('canvas');
+        if (canvas) {
+          dbg('canvas dims', `attr ${canvas.width}x${canvas.height} bb ${canvas.getBoundingClientRect().width}x${canvas.getBoundingClientRect().height}`);
+        }
+      }
+      // Force a refresh in case the canvas didn't get redrawn at the new size.
+      try { term.refresh(0, term.rows - 1); } catch (e) {}
 
       term.onData(data => {
         fetch('api/terminals/input', {

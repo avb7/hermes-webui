@@ -404,19 +404,17 @@ body.browser-panel-maximized .browserpanel .resize-handle {
 }
 
 /* Each terminal-instance lives in its own absolute-positioned panel; we
-   show only the .active one. */
+   show only the .active one. No padding / explicit child sizing — let xterm
+   manage its own canvas dimensions, otherwise its internal layout math
+   conflicts with our 100%-width override and you get a tiny cursor in the
+   corner of a black void. */
 .terminal-instance {
   position: absolute;
   inset: 0;
-  padding: 6px 0 0 6px;
   display: none;
 }
 .terminal-instance.active {
   display: block;
-}
-.terminal-instance .xterm {
-  height: 100%;
-  width: 100%;
 }
 
 .terminalpanel-status {
