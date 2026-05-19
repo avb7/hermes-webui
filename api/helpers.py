@@ -48,6 +48,13 @@ def _security_headers(handler):
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
         "img-src 'self' data: https: blob:; font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; connect-src 'self' https://cdn.jsdelivr.net; "
         "manifest-src 'self' https://*.cloudflareaccess.com; "
+        # frame-src: relaxed to allow the in-app Browser panel (static/browser.js)
+        # to iframe arbitrary HTTPS URLs — primarily E2B's per-port subdomain
+        # (https://<port>-<sandbox-id>.e2b.app) for previewing localhost apps
+        # built inside the sandbox. Without this, default-src fallback would
+        # restrict child frames to same-origin only and the panel iframe stays
+        # blank.
+        "frame-src 'self' https: blob: data:; "
         "base-uri 'self'; form-action 'self'"
     )
     handler.send_header(
