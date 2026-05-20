@@ -509,3 +509,53 @@ body.terminal-panel-maximized .terminalpanel .resize-handle {
   color: var(--muted, #999);
   border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
 }
+
+/* ============================================================
+   Mobile — relocate the floating panel edge toggles (workspace,
+   browser, terminal) from the vertical mid-right column to a
+   compact top-right cluster. On phones the mid-right column
+   overlaps the chat scroll area (tables, code blocks, etc.)
+   which is the bottleneck the user flagged.
+
+   Layout: pinned top-right corner, just under the topbar
+   (~52px tall), stacked horizontally in this fixed order so the
+   visual position doesn't shift when one panel opens and the
+   matching toggle disappears:
+
+       … [ browser ] [ terminal ] [ workspace ]
+                                     right: 8px
+
+   Sizes drop from 34×44 (desktop pill) to 32×32 (square-ish pill)
+   so three of them comfortably clear ~120px of horizontal space.
+   ============================================================ */
+@media (max-width: 768px) {
+  .panel-edge-toggle {
+    /* Reset the desktop centerline anchor */
+    top: 60px;
+    transform: none;
+    width: 32px;
+    height: 32px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.20);
+  }
+  /* Order from right to left so panel toggles closer to chrome stay
+     anchored when one is hidden. workspace owns the rightmost slot
+     because it's always present on tablets; browser + terminal fan
+     out to the left. */
+  .workspace-panel-edge-toggle {
+    right: 8px;
+  }
+  .terminal-panel-edge-toggle {
+    right: 48px;
+  }
+  .browser-panel-edge-toggle {
+    right: 88px;
+  }
+  /* When any of these toggles trigger a panel takeover, the panel
+     fills the whole viewport on mobile, so suppress the now-
+     orphaned siblings (matches the desktop maximized-state CSS
+     pattern earlier in this file). */
+  body.browser-panel-maximized .panel-edge-toggle,
+  body.terminal-panel-maximized .panel-edge-toggle {
+    display: none !important;
+  }
+}

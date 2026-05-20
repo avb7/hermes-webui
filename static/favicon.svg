@@ -1,20 +1,60 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#1a1a1a"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hermes WebUI favicon — RGB-chromatic-aberration tesseract.
+     Two nested cubes (outer + inner) drawn in 1-point perspective,
+     connected at corresponding vertices to form a 4D hypercube
+     Schlegel projection. The geometry is defined once in <defs>
+     and rendered three times with small offsets in red/green/blue
+     to produce the chromatic-aberration look. Scales crisply from
+     16px (browser tab) up to 1024px (PWA splash) without rasterizing.
+     viewBox: 0 0 100 100, square 1:1 for icon use. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
+     preserveAspectRatio="xMidYMid meet">
   <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#F5C542;stop-opacity:1"/>
-      <stop offset="100%" style="stop-color:#D4961C;stop-opacity:1"/>
-    </linearGradient>
+    <!-- Single tesseract path: 32 line segments. outer front 70x70,
+         outer back 44x44, inner front 20x20, inner back 10x10. All
+         four squares share the center (50,50). Connectors fan
+         outward in pairs. -->
+    <g id="hc-tesseract" fill="none" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <!-- outer cube: front square + back square + 4 connectors -->
+      <rect x="15" y="15" width="70" height="70"/>
+      <rect x="28" y="28" width="44" height="44"/>
+      <line x1="15" y1="15" x2="28" y2="28"/>
+      <line x1="85" y1="15" x2="72" y2="28"/>
+      <line x1="85" y1="85" x2="72" y2="72"/>
+      <line x1="15" y1="85" x2="28" y2="72"/>
+      <!-- inner cube: front square + back square + 4 connectors -->
+      <rect x="40" y="40" width="20" height="20"/>
+      <rect x="45" y="45" width="10" height="10"/>
+      <line x1="40" y1="40" x2="45" y2="45"/>
+      <line x1="60" y1="40" x2="55" y2="45"/>
+      <line x1="60" y1="60" x2="55" y2="55"/>
+      <line x1="40" y1="60" x2="45" y2="55"/>
+      <!-- 4D bridges: outer-front → inner-front (4 lines) -->
+      <line x1="15" y1="15" x2="40" y2="40"/>
+      <line x1="85" y1="15" x2="60" y2="40"/>
+      <line x1="85" y1="85" x2="60" y2="60"/>
+      <line x1="15" y1="85" x2="40" y2="60"/>
+      <!-- 4D bridges: outer-back → inner-back (4 lines) -->
+      <line x1="28" y1="28" x2="45" y2="45"/>
+      <line x1="72" y1="28" x2="55" y2="45"/>
+      <line x1="72" y1="72" x2="55" y2="55"/>
+      <line x1="28" y1="72" x2="45" y2="55"/>
+    </g>
   </defs>
-  <rect x="30" y="10" width="4" height="46" rx="2" fill="url(#g)"/>
-  <path d="M30 18 C24 14, 14 14, 10 18 C14 16, 22 16, 28 20" fill="#F5C542" opacity="0.9"/>
-  <path d="M30 22 C26 19, 18 19, 14 22 C18 20, 24 20, 28 24" fill="#D4961C" opacity="0.8"/>
-  <path d="M34 18 C40 14, 50 14, 54 18 C50 16, 42 16, 36 20" fill="#F5C542" opacity="0.9"/>
-  <path d="M34 22 C38 19, 46 19, 50 22 C46 20, 40 20, 36 24" fill="#D4961C" opacity="0.8"/>
-  <path d="M32 48 C22 44, 20 38, 26 34 C20 36, 18 42, 24 46 C18 40, 22 30, 30 28 C24 32, 22 38, 28 42"
-        fill="none" stroke="#F5C542" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M32 48 C42 44, 44 38, 38 34 C44 36, 46 42, 40 46 C46 40, 42 30, 34 28 C40 32, 42 38, 36 42"
-        fill="none" stroke="#D4961C" stroke-width="2.5" stroke-linecap="round"/>
-  <circle cx="32" cy="10" r="4" fill="#F5C542"/>
-  <circle cx="32" cy="10" r="2" fill="#FFF8E1" opacity="0.7"/>
+  <!-- Background: dark navy, rounded corners for native PWA look -->
+  <rect width="100" height="100" rx="18" ry="18" fill="#0a0d18"/>
+  <!-- Three offset color channels. mix-blend-mode:screen composites
+       overlapping strokes to near-white where all three align,
+       leaving colored fringes at the offset edges — the classic
+       chromatic-aberration glitch look. Channels picked to read as
+       distinct hues at small sizes but blend cleanly when they
+       overlap. -->
+  <g style="mix-blend-mode: screen">
+    <use href="#hc-tesseract" stroke="#ff3a64"
+         transform="translate(-1.1,-0.6)"/>
+    <use href="#hc-tesseract" stroke="#4ade80"/>
+    <use href="#hc-tesseract" stroke="#38bdf8"
+         transform="translate(1.1,0.6)"/>
+  </g>
 </svg>
