@@ -1201,6 +1201,10 @@ const _SKINS=[
   {name:'Sienna',   colors:['#D97757','#C06A49','#9A523A']},
   {name:'Catppuccin',colors:['#CBA6F7','#B4BEFE','#8839EF']},
   {name:'Nous',     colors:['#4682B4','#3A6E9A','#2C5F88']},
+  // Nord — full palette rewrite (light/dark both map to nordtheme.com), IBM Plex
+  // Sans typography, slightly more generous spacing. The three swatches are the
+  // iconic Frost trio (nord8 → nord9 → nord10). See style.css for the full skin.
+  {name:'Nord',     colors:['#88C0D0','#81A1C1','#5E81AC']},
 ];
 const _VALID_THEMES=new Set((_THEMES||[]).map(t=>t.value));
 const _VALID_SKINS=new Set((_SKINS||[]).map(s=>s.name.toLowerCase()));
@@ -1208,7 +1212,10 @@ const _LEGACY_THEME_MAP={
   slate:{theme:'dark',skin:'slate'},
   solarized:{theme:'dark',skin:'poseidon'},
   monokai:{theme:'dark',skin:'sisyphus'},
-  nord:{theme:'dark',skin:'slate'},
+  // 'nord' used to redirect here to slate (a rough approximation). It is now
+  // a first-class skin with its own palette + IBM Plex typography, so the
+  // legacy redirect is dropped — saved 'nord' values fall through to the
+  // valid-skin check and survive intact.
   oled:{theme:'dark',skin:'default'},
 };
 let _systemThemeMq=null;

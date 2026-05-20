@@ -297,6 +297,164 @@
   :root.dark[data-skin="nous"] .mcp-http{color:#7EB6E0;}
   :root.dark[data-skin="nous"] .mcp-status-active{color:#7EB6E0;}
 
+  /* ── Skin: Nord (nordtheme.com) ─────────────────────────────────────────────
+     Full palette rewrite using the official Nord palette. One skin, two modes:
+     Light = Snow Storm bg / Polar Night text / nord10 frost accent
+     Dark  = Polar Night bg / Snow Storm text / nord8 frost accent
+
+     Typography: IBM Plex Sans for UI, IBM Plex Mono for code/terminals
+     (the Google Fonts <link> lives in index.html, so the family loads once
+     and the skin opts in via --font-ui / --font-mono).
+
+     Spacing/sizing: slightly more generous than the default skin to match
+     Nord's clean, breathing aesthetic — bumped radii (8/10/14 vs 4/8/12),
+     padding (5/10/14/18 vs 4/8/12/16), line-height 1.65, and 14.5px base.
+
+     Opt-in via Settings → Skin → Nord. Theme switch (light/dark) flips
+     between the two palettes automatically — they share an accent family
+     so toggling mid-session doesn't feel like a different app.
+     ──────────────────────────────────────────────────────────────────────── */
+  :root[data-skin="nord"]{
+    /* Snow Storm canvas + Polar Night ink. nord6 ECEFF4 is the brightest
+       Snow Storm shade and reads as a near-white that's easier on the eyes
+       than the default warm cream. Surfaces step up to pure white for
+       elevated cards (matches the Nord light spec on nordtheme.com). */
+    --bg:#ECEFF4;--sidebar:#E5E9F0;--surface:#FFFFFF;
+    --border:#D8DEE9;--border2:#C2C9D6;
+    --text:#2E3440;--muted:#4C566A;--strong:#2E3440;--em:#434C5E;
+    /* nord10 (Frost deepest) for primary accent — clears AAA on Snow Storm.
+       The accent text is the same so we don't end up with two near-blue
+       hues fighting each other in nested context. */
+    --accent:#5E81AC;--accent-hover:#4C6F95;--accent-text:#5E81AC;
+    --accent-bg:rgba(94,129,172,0.10);--accent-bg-strong:rgba(94,129,172,0.20);
+    --code-bg:#E5E9F0;--code-inline-bg:rgba(46,52,64,0.07);--code-text:#5E81AC;--pre-text:#2E3440;
+    --topbar-bg:rgba(236,239,244,0.96);--main-bg:rgba(236,239,244,0.55);
+    --input-bg:rgba(46,52,64,0.04);--hover-bg:rgba(46,52,64,0.06);
+    --focus-ring:rgba(94,129,172,0.32);--focus-glow:rgba(94,129,172,0.10);
+    /* Aurora is Nord's semantic-colour band. Map error/warning/success/info
+       directly onto it so toasts, badges, and diff blocks pick them up. */
+    --error:#BF616A;--warning:#D08770;--success:#A3BE8C;--info:#88C0D0;
+    --blue:#5E81AC;--gold:#EBCB8B;
+    --user-bubble-bg:#E5E9F0;--user-bubble-border:#D8DEE9;
+    --user-bubble-text:#2E3440;--user-bubble-placeholder:#4C566A;
+    --user-selection-bg:rgba(94,129,172,0.24);--user-selection-text:#2E3440;
+    --surface-subtle:rgba(46,52,64,0.025);--surface-subtle-hover:rgba(46,52,64,0.045);
+    --border-subtle:rgba(46,52,64,0.08);--border-muted:rgba(46,52,64,0.12);
+    /* Spacing/sizing revamp — see comment block above for rationale. */
+    --radius-sm:5px;--radius-md:8px;--radius-card:10px;--radius-lg:14px;--radius-pill:999px;
+    --space-1:5px;--space-2:10px;--space-3:14px;--space-4:18px;
+    --font-size-xs:11.5px;--font-size-sm:12.5px;--font-size-md:14.5px;
+    /* Plex first, then system fallbacks identical to the default --font-ui
+       so the first paint (before Google Fonts resolves) is still clean. */
+    --font-ui:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+    --font-mono:"IBM Plex Mono","SF Mono",Menlo,Monaco,"Cascadia Code",ui-monospace,monospace;
+    font-family:var(--font-ui);font-size:14.5px;line-height:1.65;
+    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  }
+  :root.dark[data-skin="nord"]{
+    --bg:#2E3440;--sidebar:#272B33;--surface:#3B4252;
+    --border:#434C5E;--border2:#4C566A;
+    --text:#ECEFF4;--muted:#7B889D;--strong:#ECEFF4;--em:#D8DEE9;
+    --accent:#88C0D0;--accent-hover:#8FBCBB;--accent-text:#88C0D0;
+    --accent-bg:rgba(136,192,208,0.12);--accent-bg-strong:rgba(136,192,208,0.22);
+    --code-bg:#3B4252;--code-inline-bg:rgba(216,222,233,0.08);--code-text:#88C0D0;--pre-text:#ECEFF4;
+    --topbar-bg:rgba(39,43,51,0.96);--main-bg:rgba(46,52,64,0.55);
+    --input-bg:rgba(216,222,233,0.05);--hover-bg:rgba(216,222,233,0.07);
+    --focus-ring:rgba(136,192,208,0.32);--focus-glow:rgba(136,192,208,0.10);
+    --error:#BF616A;--warning:#EBCB8B;--success:#A3BE8C;--info:#88C0D0;
+    --blue:#88C0D0;--gold:#EBCB8B;
+    --user-bubble-bg:#3B4252;--user-bubble-border:#434C5E;
+    --user-bubble-text:#ECEFF4;--user-bubble-placeholder:#7B889D;
+    --user-selection-bg:rgba(136,192,208,0.28);--user-selection-text:#ECEFF4;
+    --surface-subtle:rgba(216,222,233,0.025);--surface-subtle-hover:rgba(216,222,233,0.05);
+    --border-subtle:rgba(216,222,233,0.08);--border-muted:rgba(216,222,233,0.14);
+  }
+  /* ── Nord skin: component-level overrides ─────────────────────────────── */
+  /* New chat button: solid frost on both modes. Snow text on either accent
+     reads cleanly because both nord10 (light accent) and nord8 (dark accent)
+     carry enough chroma against #ECEFF4. */
+  :root[data-skin="nord"]:not(.dark) .new-chat-btn,
+  :root.dark[data-skin="nord"] .new-chat-btn{
+    background:var(--accent);border-color:var(--accent);
+    color:#ECEFF4;font-weight:500;letter-spacing:.005em;
+    box-shadow:0 1px 2px rgba(46,52,64,0.10);
+  }
+  :root[data-skin="nord"]:not(.dark) .new-chat-btn:hover,
+  :root.dark[data-skin="nord"] .new-chat-btn:hover{
+    background:var(--accent-hover);border-color:var(--accent-hover);color:#ECEFF4;
+  }
+  /* Tool / thinking cards: very subtle frost-tinted fill, generous padding so
+     long tool outputs feel like discrete cards rather than crammed strips.
+     Mirrors the sienna pattern but with a cooler-blue base. */
+  :root[data-skin="nord"] .tool-card{
+    background:rgba(94,129,172,0.04);
+    border-color:var(--border);border-radius:10px;
+    padding:12px 14px;
+  }
+  :root[data-skin="nord"] .tool-card:hover{border-color:var(--border2);}
+  :root.dark[data-skin="nord"] .tool-card{background:rgba(136,192,208,0.05);}
+  :root[data-skin="nord"] .tool-card-running{background:var(--accent-bg);border-color:var(--accent-bg-strong);}
+  :root[data-skin="nord"] .tool-card-name{color:var(--muted);font-weight:500;}
+  :root[data-skin="nord"] .tool-arg-key,
+  :root[data-skin="nord"] .tool-card-more{color:var(--accent-text);}
+  :root[data-skin="nord"] .tool-card-running-dot{background:var(--accent);}
+  /* User bubble: soft Snow-Storm pill on light, Polar-Night pill on dark.
+     Slightly bigger radius + padding matches Nord's generous geometry. */
+  :root[data-skin="nord"] .msg-row[data-role="user"] .msg-body{
+    border-radius:14px;padding:12px 16px;
+  }
+  :root[data-skin="nord"] .msg-row[data-role="user"] .msg-body code{
+    color:var(--user-bubble-text);background:rgba(46,52,64,0.08);
+  }
+  :root.dark[data-skin="nord"] .msg-row[data-role="user"] .msg-body code{
+    background:rgba(216,222,233,0.10);
+  }
+  /* Composer: slightly more pillowy than default */
+  :root[data-skin="nord"] .composer-box{border-radius:16px;}
+  /* Active session indicator: frost left-bar (same idiom as sienna) */
+  :root[data-skin="nord"] .session-item.active{border-left:2px solid var(--accent);}
+  /* Send button glow: frost halo on hover, no harsh shadow */
+  :root[data-skin="nord"] button.send-btn{box-shadow:0 1px 3px rgba(94,129,172,0.25);}
+  :root[data-skin="nord"] button.send-btn:hover{box-shadow:0 2px 8px rgba(94,129,172,0.40);}
+  :root.dark[data-skin="nord"] button.send-btn{box-shadow:0 1px 3px rgba(136,192,208,0.25);}
+  :root.dark[data-skin="nord"] button.send-btn:hover{box-shadow:0 2px 8px rgba(136,192,208,0.45);}
+  /* Code & terminals: IBM Plex Mono. Catches .msg-body code, pre,
+     terminal-host (xterm), and the workspace file tree's monospace bits. */
+  :root[data-skin="nord"] pre,
+  :root[data-skin="nord"] code,
+  :root[data-skin="nord"] kbd,
+  :root[data-skin="nord"] samp,
+  :root[data-skin="nord"] .xterm,
+  :root[data-skin="nord"] .file-item,
+  :root[data-skin="nord"] .composer-terminal{
+    font-family:var(--font-mono);
+  }
+  /* Scrollbars: subtle frost. WebKit + Firefox both supported. */
+  :root[data-skin="nord"]::-webkit-scrollbar-thumb{background:rgba(94,129,172,0.30);border-radius:3px;}
+  :root[data-skin="nord"]::-webkit-scrollbar-thumb:hover{background:rgba(94,129,172,0.45);}
+  :root[data-skin="nord"]{scrollbar-width:thin;scrollbar-color:rgba(94,129,172,0.30) transparent;}
+  :root.dark[data-skin="nord"]::-webkit-scrollbar-thumb{background:rgba(136,192,208,0.30);border-radius:3px;}
+  :root.dark[data-skin="nord"]::-webkit-scrollbar-thumb:hover{background:rgba(136,192,208,0.50);}
+  :root.dark[data-skin="nord"]{scrollbar-width:thin;scrollbar-color:rgba(136,192,208,0.30) transparent;}
+  /* Tree / diff / mcp / session-badge pickup of Aurora semantic colours so the
+     UI feels color-consistent even on parts that hardcoded hexes before. */
+  :root[data-skin="nord"] .diff-block .diff-plus{color:#A3BE8C;}
+  :root[data-skin="nord"] .diff-block .diff-minus{color:#BF616A;}
+  :root.dark[data-skin="nord"] .diff-block .diff-plus{color:#A3BE8C;}
+  :root.dark[data-skin="nord"] .diff-block .diff-minus{color:#BF616A;}
+  :root[data-skin="nord"] .mcp-status-active,
+  :root[data-skin="nord"] .mcp-http{color:var(--accent-text);}
+  :root.dark[data-skin="nord"] .mcp-status-active,
+  :root.dark[data-skin="nord"] .mcp-http{color:var(--accent-text);}
+  :root[data-skin="nord"] .session-child-count,
+  :root[data-skin="nord"] .session-tree-badge,
+  :root[data-skin="nord"] .session-tag{background:var(--accent-bg);color:var(--accent-text);}
+  :root[data-skin="nord"] .session-child-count:hover{background:var(--accent-bg-strong);color:var(--accent-text);}
+  :root.dark[data-skin="nord"] .session-child-count,
+  :root.dark[data-skin="nord"] .session-tree-badge,
+  :root.dark[data-skin="nord"] .session-tag{background:var(--accent-bg);color:var(--accent-text);}
+  :root.dark[data-skin="nord"] .session-child-count:hover{background:var(--accent-bg-strong);color:var(--accent-text);}
+
   /* #594: app-dialog light mode overrides — base styles use hardcoded dark gradients */
   :root:not(.dark) .app-dialog{
     background:linear-gradient(180deg,rgba(240,237,232,.99),rgba(228,224,216,.99));
