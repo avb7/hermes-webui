@@ -21,6 +21,7 @@ import struct
 import subprocess
 import termios
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -470,6 +471,16 @@ def start_persistent_terminal(
         term.reader = threading.Thread(target=_reader_loop, args=(term,), daemon=True)
         term.reader.start()
         _TERMINALS[sid] = term
+        # Wait briefly for the tmux server to register the session so that
+        # `term.is_alive()` (which calls _tmux_session_exists) returns True
+        # by the time we hand the TerminalSession back to the API handler.
+        # 8 retries * 50ms = at most 400ms — well under the typical
+        # /api/terminals/start latency budget; in practice the session is
+        # up after 1-2 retries.
+        for _ in range(8):
+            if _tmux_session_exists(session_name):
+                break
+            time.sleep(0.05)
         return term
 
 
