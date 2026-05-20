@@ -6393,8 +6393,11 @@ def _handle_terminals_start(handler, body):
     try:
         tid = _multi_terminal_id(body)
         workspace = _multi_terminal_workspace(body.get("workspace"))
-        from api.terminal import start_terminal
-        term = start_terminal(
+        # Multi-terminal panel uses the persistent (tmux-backed) variant
+        # so shells survive WebUI restarts. start_persistent_terminal
+        # gracefully falls back to start_terminal if tmux isn't installed.
+        from api.terminal import start_persistent_terminal
+        term = start_persistent_terminal(
             tid,
             workspace,
             rows=int(body.get("rows") or 24),
@@ -6408,6 +6411,7 @@ def _handle_terminals_start(handler, body):
                 "terminal_id": tid,
                 "workspace": term.workspace,
                 "running": term.is_alive(),
+                "persistent": bool(getattr(term, "persistent", False)),
             },
         )
     except KeyError as e:
