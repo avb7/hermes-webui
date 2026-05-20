@@ -52,17 +52,24 @@ logger = logging.getLogger("hermes.push")
 
 
 # Subject claim embedded in the VAPID JWT (RFC 8292 §2.1). Push services use
-# this so they can contact the sender if a subscription misbehaves. MUST be
-# either a "mailto:" or "https:" URI.
+# this so they can contact the sender if a subscription misbehaves.
 #
-# Apple's push service (web.push.apple.com) is *strict* here: a localhost
-# domain or non-resolving hostname triggers a silent 400/403 reject (Apple
-# returns 'BadJwtToken' with no further detail). We default to the public
-# GitHub URL of the fork so the claim is a real, resolvable HTTPS URI. Override
-# via the HERMES_WEBUI_PUSH_VAPID_SUB env var if you want your own contact.
+# Two layered constraints decide what's valid here:
+#   - RFC 8292 §2.1 allows EITHER a "mailto:" or "https:" URI.
+#   - py_vapid (the JWT signer underneath pywebpush) hard-rejects anything
+#     that isn't a "mailto:" with: VapidException("Missing 'sub' from claims.
+#     'sub' is your admin email as a mailto: link.") — i.e. it's stricter
+#     than the spec. So `https:` subs raise before we ever talk to Apple.
+#
+# We therefore stay on `mailto:` and use the RFC 2606-reserved `.invalid`
+# TLD — syntactically a well-formed URI, semantically guaranteed to never
+# collide with a real domain. Apple accepts this; we previously failed
+# with `mailto:hermes@localhost` because `localhost` is not a routable
+# top-level identifier and Apple's validator silently rejected the JWT.
+# Override via HERMES_WEBUI_PUSH_VAPID_SUB if you want a contactable address.
 VAPID_SUB = os.environ.get(
     "HERMES_WEBUI_PUSH_VAPID_SUB",
-    "https://github.com/avb7/hermes-webui",
+    "mailto:no-reply@hermes-webui.invalid",
 )
 
 _LOCK = threading.Lock()
