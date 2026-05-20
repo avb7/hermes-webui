@@ -530,8 +530,11 @@ body.terminal-panel-maximized .terminalpanel .resize-handle {
    ============================================================ */
 @media (max-width: 768px) {
   .panel-edge-toggle {
-    /* Reset the desktop centerline anchor */
-    top: 60px;
+    /* Reset the desktop centerline anchor. With viewport-fit=cover the
+       notch / Dynamic Island can extend ~47px down; use max() so on phones
+       without a notch we still get a tidy 60px-from-top placement, and on
+       notched phones the toggle slips below the safe-area inset. */
+    top: max(60px, calc(env(safe-area-inset-top, 0px) + 12px));
     transform: none;
     width: 32px;
     height: 32px;
