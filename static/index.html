@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover lets the PWA extend behind the iPhone status bar and
+     home indicator. Combined with .app-titlebar's padding-top:env(safe-area-
+     inset-top) and the standalone-mode body background rule below, this
+     makes the status bar area inherit the topbar color instead of showing
+     an iOS-default tint. interactive-widget=resizes-content keeps the
+     keyboard-open layout from squashing the composer on iOS. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Hermes</title>
 <!-- base href enables subpath mount support; all static paths must stay relative (no leading slash).
      MUST appear before manifest/favicon links so browsers resolve relative URLs against the
@@ -27,11 +33,40 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <script>(function(){var themes={light:1,dark:1,system:1},skins={default:1,ares:1,mono:1,slate:1,poseidon:1,sisyphus:1,charizard:1,sienna:1,catppuccin:1,nous:1,nord:1},legacy={slate:['dark','slate'],solarized:['dark','poseidon'],monokai:['dark','sisyphus'],oled:['dark','default']},t=(localStorage.getItem('hermes-theme')||'dark').toLowerCase(),s=(localStorage.getItem('hermes-skin')||'').toLowerCase(),m=legacy[t],theme=m?m[0]:(themes[t]?t:'dark'),skin=skins[s]?s:(m?m[1]:'default');localStorage.setItem('hermes-theme',theme);localStorage.setItem('hermes-skin',skin);if(theme==='system')theme=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';if(theme==='dark')document.documentElement.classList.add('dark');if(skin!=='default')document.documentElement.dataset.skin=skin;})()</script>
 <script>(function(){var fs=localStorage.getItem('hermes-font-size');if(fs&&fs!=='default')document.documentElement.dataset.fontSize=fs;})()</script>
-<!-- theme-color: surfaces the active app chrome color to native status bars (Safari status bar, PWA, native WKWebView wrappers). Updated dynamically by boot.js when theme/skin changes. The light/dark default values match style.css :root --sidebar / :root.dark --sidebar. -->
-<meta name="theme-color" content="#FAF7F0" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#141425" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" id="hermes-theme-color" content="#0D0D1A">
-<script>(function(){try{var t=localStorage.getItem('hermes-theme')||'dark';if(t==='system')t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';var c=t==='dark'?'#141425':'#FAF7F0';document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute('content',c);m.removeAttribute('media');});}catch(e){}})()</script>
+<!-- theme-color: surfaces the active app chrome color to native status bars
+     (Safari status bar, PWA app preview, native WKWebView wrappers).
+     Updated dynamically by boot.js _syncThemeColorMeta when theme/skin
+     changes; the inline script below picks the *active* skin's --sidebar
+     at boot so PWA installs / lock-screen previews don't show the old
+     default-skin color for users who picked Nord / Sienna / etc.
+     The light/dark defaults below are fallbacks for browsers without JS. -->
+<meta name="theme-color" content="#ECEFF4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#272B33" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" id="hermes-theme-color" content="#272B33">
+<script>(function(){try{
+  // Map each skin to its (light-sidebar, dark-sidebar) duple. These mirror
+  // the --sidebar values in static/style.css. Keep in sync when adding a
+  // new skin: theme-color is the only chrome surface that can't read
+  // CSS variables before the stylesheet has loaded.
+  var SKIN_SIDEBARS = {
+    'default':    ['#FAF7F0', '#141425'],
+    'sienna':     ['#F0EEE6', '#262522'],
+    'catppuccin': ['#E6E9EF', '#181825'],
+    'nous':       ['#F5F5F5', '#0F1419'],
+    'nord':       ['#E5E9F0', '#272B33'],
+  };
+  var t = (localStorage.getItem('hermes-theme') || 'dark').toLowerCase();
+  if (t === 'system') {
+    t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  var s = (localStorage.getItem('hermes-skin') || 'default').toLowerCase();
+  var entry = SKIN_SIDEBARS[s] || SKIN_SIDEBARS['default'];
+  var c = t === 'dark' ? entry[1] : entry[0];
+  document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+    m.setAttribute('content', c);
+    m.removeAttribute('media');
+  });
+} catch (e) {}})()</script>
 <script>(function(){try{document.documentElement.dataset.workspacePanel=localStorage.getItem('hermes-webui-workspace-panel')==='open'?'open':'closed';}catch(e){document.documentElement.dataset.workspacePanel='closed';}})()</script>
 <script>(function(){try{if(localStorage.getItem('hermes-webui-sidebar-collapsed')==='1')document.documentElement.dataset.sidebarCollapsed='1';}catch(e){}})()</script>
 <script>window.__HERMES_CONFIG__={maxUploadBytes:__MAX_UPLOAD_BYTES__,csrfToken:__CSRF_TOKEN_JSON__};</script>

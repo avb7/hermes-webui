@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import threading
 import time
@@ -47,10 +48,22 @@ except Exception:
     _PYWEBPUSH = False
 
 
-# Mailto subject embedded in the VAPID JWT. Push services use this only to
-# email the developer if a subscription misbehaves. Any valid mailto: URL
-# works; we use the WebUI user-visible identity by default.
-VAPID_SUB = os.environ.get("HERMES_WEBUI_PUSH_VAPID_SUB", "mailto:hermes@localhost")
+logger = logging.getLogger("hermes.push")
+
+
+# Subject claim embedded in the VAPID JWT (RFC 8292 §2.1). Push services use
+# this so they can contact the sender if a subscription misbehaves. MUST be
+# either a "mailto:" or "https:" URI.
+#
+# Apple's push service (web.push.apple.com) is *strict* here: a localhost
+# domain or non-resolving hostname triggers a silent 400/403 reject (Apple
+# returns 'BadJwtToken' with no further detail). We default to the public
+# GitHub URL of the fork so the claim is a real, resolvable HTTPS URI. Override
+# via the HERMES_WEBUI_PUSH_VAPID_SUB env var if you want your own contact.
+VAPID_SUB = os.environ.get(
+    "HERMES_WEBUI_PUSH_VAPID_SUB",
+    "https://github.com/avb7/hermes-webui",
+)
 
 _LOCK = threading.Lock()
 _keys_cache: dict | None = None
@@ -257,9 +270,26 @@ def remove_subscription(endpoint: str) -> bool:
         return True
 
 
-def send_to_all(payload: dict, *, ttl: int = 60) -> dict:
+def _identify_endpoint(endpoint: str) -> str:
+    """Return a short tag for the push service host (for log readability)."""
+    if "web.push.apple.com" in endpoint:
+        return "apple"
+    if "fcm.googleapis.com" in endpoint or "fcm.android.com" in endpoint:
+        return "fcm"
+    if "updates.push.services.mozilla.com" in endpoint:
+        return "mozilla"
+    if "wns2-" in endpoint or "notify.windows.com" in endpoint:
+        return "windows"
+    return "other"
+
+
+def send_to_all(payload: dict, *, ttl: int = 86400) -> dict:
     """Deliver `payload` (any JSON-serializable dict) to every subscription.
-    Auto-prunes endpoints that return 404/410 (gone).
+    Auto-prunes endpoints that return 404/410 (gone) or 403 with the well-known
+    "subscription bound to a different VAPID key" body shapes.
+
+    ttl=86400 (24h) by default — Apple in particular favours longer TTLs;
+    shorter values can be silently bounced. Callers can override per-event.
 
     Returns {"sent": N, "removed": M, "errors": [...]} for diagnostics.
     """
@@ -274,7 +304,12 @@ def send_to_all(payload: dict, *, ttl: int = 60) -> dict:
     with _LOCK:
         subs = list(_load_subs())
     dead: list[str] = []
+    logger.info(
+        "send_to_all start: subs=%d ttl=%ds sub_claim=%s payload_bytes=%d",
+        len(subs), ttl, VAPID_SUB, len(payload_bytes),
+    )
     for sub in subs:
+        svc = _identify_endpoint(sub["endpoint"])
         try:
             webpush(
                 subscription_info={
@@ -287,6 +322,7 @@ def send_to_all(payload: dict, *, ttl: int = 60) -> dict:
                 ttl=ttl,
             )
             sent += 1
+            logger.info("webpush ok: svc=%s ep=%s", svc, sub["endpoint"][:80])
         except WebPushException as e:
             code = getattr(getattr(e, "response", None), "status_code", 0)
             body = ""
@@ -294,6 +330,18 @@ def send_to_all(payload: dict, *, ttl: int = 60) -> dict:
                 body = e.response.text  # type: ignore[attr-defined]
             except Exception:
                 body = str(e)
+            headers = {}
+            try:
+                headers = dict(e.response.headers or {})  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            # Always log the full failure so future Apple/FCM regressions
+            # leave a trace. Service tag + HTTP code + first 300 chars of
+            # body is enough to diagnose every known web-push failure mode.
+            logger.warning(
+                "webpush FAIL: svc=%s code=%s ep=%s body=%r headers=%s",
+                svc, code, sub["endpoint"][:80], body[:300], headers,
+            )
             # 404/410 = gone for good. 403 + "do not correspond" / BadJwtToken
             # means the subscription is bound to an older VAPID public key
             # than the one we just signed with — equivalent to "gone", and
@@ -307,8 +355,12 @@ def send_to_all(payload: dict, *, ttl: int = 60) -> dict:
             if code in (404, 410) or stale_403:
                 dead.append(sub["endpoint"])
             else:
-                errors.append(f"{code}: {body[:160]}")
+                errors.append(f"{svc}/{code}: {body[:160]}")
         except Exception as e:
+            logger.warning(
+                "webpush UNEXPECTED: svc=%s ep=%s err=%r",
+                svc, sub["endpoint"][:80], e,
+            )
             errors.append(str(e)[:200])
     if dead:
         with _LOCK:
@@ -338,11 +390,14 @@ def notify_session_response(session_id: str, *, title: str = "", body: str = "")
         "ts": int(time.time()),
     }
     # Send on a background thread so the streaming pipeline isn't held up
-    # by network latency to FCM / Mozilla / Apple push services.
+    # by network latency to FCM / Mozilla / Apple push services. Inherit the
+    # send_to_all default TTL (24h) — agent turns can sometimes finish while
+    # the phone is offline and we want the OS to deliver the badge whenever
+    # the user's device next reaches a push gateway.
     def _do():
         try:
-            send_to_all(payload, ttl=300)
+            send_to_all(payload)
         except Exception:
-            pass
+            logger.exception("notify_session_response: send_to_all failed")
 
     threading.Thread(target=_do, daemon=True).start()
