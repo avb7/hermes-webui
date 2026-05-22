@@ -581,9 +581,16 @@
   body,header,footer,aside,nav,main,div,button,input,textarea,select{transition-property:background-color,border-color,color;transition-duration:.15s;transition-timing-function:ease;}
   :root{--app-titlebar-safe-top:0px;}
   @supports (padding-top: env(safe-area-inset-top)){
-    @media (display-mode: standalone), (display-mode: fullscreen){
-      :root{--app-titlebar-safe-top:env(safe-area-inset-top,0px);}
-    }
+    /* Universal safe-area-top — apply in BOTH iOS Safari (non-PWA) and PWA
+       standalone. We previously gated this on @media (display-mode:
+       standalone) which left iOS-Safari users with a topbar that started
+       at top:0 and visually sat under the status-bar text (see the user's
+       1:48 / 5:45 screenshots). viewport-fit=cover (set in index.html
+       <meta viewport>) makes env(safe-area-inset-top) report the correct
+       status-bar height in BOTH display modes, so the gate was wrong
+       — drop it. On non-notched devices env() resolves to 0, so this is
+       a no-op there. */
+    :root{--app-titlebar-safe-top:env(safe-area-inset-top,0px);}
     /* Pull-to-refresh indicator for PWA standalone mode */
     .pull-to-refresh-indicator{position:absolute;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;font-size:13px;color:var(--muted);pointer-events:none;opacity:0;transform:translateY(-100%);transition:opacity .2s,transform .2s;background:var(--bg);border-bottom:1px solid var(--border);}
     .pull-to-refresh-indicator.active{opacity:1;transform:translateY(0);}
@@ -593,7 +600,6 @@
     .app-titlebar-reload{display:none;align-items:center;justify-content:center;width:32px;height:32px;flex-shrink:0;background:none;border:none;color:var(--muted);border-radius:8px;cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent;transition:background-color .15s,color .15s;}
     .app-titlebar-reload:hover{background:var(--hover-bg);color:var(--text);}
     @media (display-mode: standalone), (display-mode: fullscreen){
-      :root{--app-titlebar-safe-top:env(safe-area-inset-top,0px);}
       .app-titlebar-reload{display:inline-flex;}
     }
   }
