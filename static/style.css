@@ -604,7 +604,24 @@
     }
   }
   html{background:var(--sidebar);}
-  body{background:var(--bg);color:var(--text);height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;}
+  /* Viewport-height units on iOS PWA, ranked by reliability:
+       100vh  : *largest* viewport on iOS — full screen, ignores dynamic
+                chrome. Used as the universal fallback.
+       100dvh : *dynamic* viewport — Safari treats the home-indicator
+                safe area like dynamic chrome on iOS PWA, returning the
+                same value as 100svh (i.e. small viewport that *excludes*
+                safe areas). With viewport-fit=cover the page extends
+                behind the home indicator anyway, so 100dvh produces a
+                body that's ~30-50px shorter than the visible viewport
+                and html's --sidebar bg shows through the bottom gap.
+                That was the "section at the bottom" the user kept
+                hitting after every composer-padding fix.
+       100lvh : *large* viewport — explicitly the full screen including
+                safe areas. Same value as 100vh in practice on iOS PWA
+                (no dynamic chrome to retract), but more semantically
+                correct for "I want the full screen including under
+                the home indicator". */
+  body{background:var(--bg);color:var(--text);height:100vh;height:100lvh;overflow:hidden;display:flex;flex-direction:column;}
   /* The previous body { background: var(--sidebar); } rule in PWA
      standalone mode painted the WHOLE body — both top safe-area
      (correct, blends with status bar) AND bottom safe-area (wrong,
