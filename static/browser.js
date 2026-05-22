@@ -331,6 +331,12 @@
     if (!p) return;
     p.hidden = !open;
     document.body.classList.toggle('browser-panel-open', !!open);
+    // Mirror of the same-named fix in terminals.js setOpen — when closing
+    // the panel we drop the maximize class so a stale maximized state
+    // can't keep .main / .sidebar hidden via the maximize CSS rules.
+    if (!open) {
+      document.body.classList.remove('browser-panel-maximized');
+    }
     if (open) {
       // Apply saved width
       const w = parseInt(localStorage.getItem(STORAGE_WIDTH) || '', 10);
@@ -441,11 +447,17 @@
     if (!document.getElementById('browserPanel')) return;
     initResize();
     initUrlBar();
-    // Restore prior state
+    // Restore prior state — but only restore maximize if the panel is
+    // actually opening. Otherwise a stale STORAGE_MAX flag would re-
+    // apply the maximize body-class on a page where the panel itself
+    // is closed, blanking the chat UI via the maximize CSS rules.
+    // (Same pattern as terminals.js init.)
     const wasOpen = localStorage.getItem(STORAGE_OPEN) === '1';
     const wasMax = localStorage.getItem(STORAGE_MAX) === '1';
-    if (wasOpen) setOpen(true);
-    if (wasMax) setMaximized(true);
+    if (wasOpen) {
+      setOpen(true);
+      if (wasMax) setMaximized(true);
+    }
   }
 
   window.toggleBrowserPanel = toggleBrowserPanel;

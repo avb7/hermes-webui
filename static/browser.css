@@ -296,21 +296,24 @@ body.terminal-panel-open .terminal-panel-edge-toggle {
 /* "Full takeover" mode: hide the sidebar, main, and workspace; let the
    browserpanel fill the entire .layout next to the rail. */
 
-body.browser-panel-maximized .sidebar,
-body.browser-panel-maximized main.main,
-body.browser-panel-maximized .rightpanel,
-body.browser-panel-maximized .workspace-panel-edge-toggle {
+/* Same open+maximized co-requirement pattern as the terminal panel — see
+   the comment above the terminal-panel rules. Belt-and-suspenders against
+   a stale browser-panel-maximized flag blanking the chat UI. */
+body.browser-panel-open.browser-panel-maximized .sidebar,
+body.browser-panel-open.browser-panel-maximized main.main,
+body.browser-panel-open.browser-panel-maximized .rightpanel,
+body.browser-panel-open.browser-panel-maximized .workspace-panel-edge-toggle {
   display: none !important;
 }
 
-body.browser-panel-maximized .browserpanel {
+body.browser-panel-open.browser-panel-maximized .browserpanel {
   flex: 1;
   width: auto;
   max-width: none;
   border-left: none;
 }
 
-body.browser-panel-maximized .browserpanel .resize-handle {
+body.browser-panel-open.browser-panel-maximized .browserpanel .resize-handle {
   display: none;
 }
 
@@ -446,15 +449,20 @@ body.browser-panel-maximized .browserpanel .resize-handle {
   flex-shrink: 0;
 }
 
-body.terminal-panel-maximized .sidebar,
-body.terminal-panel-maximized main.main,
-body.terminal-panel-maximized .rightpanel,
-body.terminal-panel-maximized .browserpanel,
-body.terminal-panel-maximized .workspace-panel-edge-toggle,
-body.terminal-panel-maximized .browser-panel-edge-toggle {
+/* terminal-panel-maximized hides everything BUT the terminal panel,
+   but ONLY when the terminal panel is actually open. Without the
+   `body.terminal-panel-open` co-requirement, a stale maximize flag
+   (left in localStorage from a previous open) would blank the entire
+   chat UI even though the panel itself is hidden. */
+body.terminal-panel-open.terminal-panel-maximized .sidebar,
+body.terminal-panel-open.terminal-panel-maximized main.main,
+body.terminal-panel-open.terminal-panel-maximized .rightpanel,
+body.terminal-panel-open.terminal-panel-maximized .browserpanel,
+body.terminal-panel-open.terminal-panel-maximized .workspace-panel-edge-toggle,
+body.terminal-panel-open.terminal-panel-maximized .browser-panel-edge-toggle {
   display: none !important;
 }
-body.terminal-panel-maximized .terminalpanel {
+body.terminal-panel-open.terminal-panel-maximized .terminalpanel {
   flex: 1; width: auto; max-width: none; border-left: none;
 }
 body.terminal-panel-maximized .terminalpanel .resize-handle {

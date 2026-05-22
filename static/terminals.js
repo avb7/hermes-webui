@@ -343,6 +343,15 @@
     if (!p) return;
     p.hidden = !open;
     document.body.classList.toggle('terminal-panel-open', !!open);
+    // When the panel closes, also drop the maximize class. Without this
+    // the body keeps terminal-panel-maximized after the panel is hidden,
+    // and the CSS that hides .main / .sidebar / .rightpanel under
+    // body.terminal-panel-maximized blanks the entire chat UI.
+    // STORAGE_MAX is left intact so the next open restores the user's
+    // last maximize preference on devices where it makes sense.
+    if (!open) {
+      document.body.classList.remove('terminal-panel-maximized');
+    }
     if (open) {
       // On phone-width viewports always open maximized: the panel covers
       // the chat anyway via mobile CSS (inset:0), and the Maximize-button
@@ -455,8 +464,16 @@
     initResize();
     const wasOpen = localStorage.getItem(STORAGE_OPEN) === '1';
     const wasMax = localStorage.getItem(STORAGE_MAX) === '1';
-    if (wasOpen) setOpen(true);
-    if (wasMax) setMaximized(true);
+    // Only restore maximize if the panel is actually opening. Without this
+    // gate, a stale STORAGE_MAX=1 (e.g. left over from a mobile session
+    // where my new code auto-maximizes on open) re-applies the
+    // terminal-panel-maximized class on a page where the panel itself
+    // is closed — and the CSS rule under body.terminal-panel-maximized
+    // hides .main/.sidebar/.rightpanel, blanking the entire chat UI.
+    if (wasOpen) {
+      setOpen(true);
+      if (wasMax) setMaximized(true);
+    }
   }
 
   window.toggleTerminalPanel = toggleTerminalPanel;
