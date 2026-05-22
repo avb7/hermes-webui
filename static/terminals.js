@@ -324,12 +324,38 @@
     return document.body.classList.contains('terminal-panel-maximized');
   }
 
+  // True if we're on a phone-width viewport. Mirrors the @media (max-width:
+  // 640px) breakpoint in browser.css so JS and CSS agree on what "mobile"
+  // means. matchMedia is cheap and reactive, so we re-query on each call
+  // rather than caching (lets orientation changes / split-view resizes
+  // affect behaviour correctly without a reload).
+  function _isMobileViewport() {
+    try {
+      return !!(window.matchMedia
+        && window.matchMedia('(max-width: 640px)').matches);
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function setOpen(open) {
     const p = _panel();
     if (!p) return;
     p.hidden = !open;
     document.body.classList.toggle('terminal-panel-open', !!open);
     if (open) {
+      // On phone-width viewports always open maximized: the panel covers
+      // the chat anyway via mobile CSS (inset:0), and the Maximize-button
+      // glyph must reflect that or it shows the wrong icon. Call
+      // setMaximized() to keep the body class, button glyph, and
+      // xterm-fit resize logic in sync via the existing path.
+      // setMaximized writes to STORAGE_MAX — fine: when the viewport
+      // grows past 640px later (rotate / split-view) the maximize state
+      // restores via the same flag, which is the desired behaviour
+      // ("I left it maximized last time, keep it maximized now").
+      if (_isMobileViewport() && !isMaximized()) {
+        setMaximized(true);
+      }
       const w = parseInt(localStorage.getItem(STORAGE_WIDTH) || '', 10);
       if (w > 0 && !isMaximized()) p.style.width = w + 'px';
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
