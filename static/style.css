@@ -455,6 +455,136 @@
   :root.dark[data-skin="nord"] .session-tag{background:var(--accent-bg);color:var(--accent-text);}
   :root.dark[data-skin="nord"] .session-child-count:hover{background:var(--accent-bg-strong);color:var(--accent-text);}
 
+  /* ── Skin: Matte (minimalist terminal aesthetic) ────────────────────────────
+     One skin, two modes:
+       Light = near-white canvas / near-black ink / deep amber accent
+       Dark  = near-pure-black canvas / off-white ink / amber accent
+
+     Inspired by tiling-WM Linux desktops (i3 / hyprland) with monochrome
+     backgrounds and a single warm accent for status / highlights. Designed
+     to be high contrast and visually "calm" — no gradients, minimal
+     translucency, sharp typography. The amber accent threads through both
+     modes so a theme switch doesn't feel like a brand swap. Spacing /
+     radii kept at defaults — the matte aesthetic is purely chromatic.
+
+     Opt-in via Settings → Skin → Matte. Theme switch (light/dark) flips
+     the two palettes automatically.
+     ──────────────────────────────────────────────────────────────────────── */
+  :root[data-skin="matte"]{
+    /* Light: near-white canvas, near-black text, deeper amber accent for
+       AA-contrast on light bg (#B45309 hits 4.5:1 on #FAFAFA). */
+    --bg:#FAFAFA;--sidebar:#F5F5F5;--surface:#FFFFFF;
+    --border:#E5E5E5;--border2:#CCCCCC;
+    --text:#0A0A0A;--muted:#6E6E6E;--strong:#000000;--em:#404040;
+    --accent:#B45309;--accent-hover:#92400E;--accent-text:#B45309;
+    --accent-bg:rgba(180,83,9,0.08);--accent-bg-strong:rgba(180,83,9,0.18);
+    --code-bg:#F0F0F0;--code-inline-bg:rgba(0,0,0,0.06);--code-text:#B45309;--pre-text:#0A0A0A;
+    --topbar-bg:rgba(245,245,245,0.96);--main-bg:rgba(250,250,250,0.55);
+    --input-bg:rgba(0,0,0,0.04);--hover-bg:rgba(0,0,0,0.05);
+    --focus-ring:rgba(180,83,9,0.32);--focus-glow:rgba(180,83,9,0.10);
+    --error:#DC2626;--warning:#D97706;--success:#16A34A;--info:#2563EB;
+    --blue:#2563EB;--gold:#B45309;
+    --user-bubble-bg:#F0F0F0;--user-bubble-border:#E5E5E5;
+    --user-bubble-text:#0A0A0A;--user-bubble-placeholder:#6E6E6E;
+    --user-selection-bg:rgba(180,83,9,0.22);--user-selection-text:#0A0A0A;
+    --surface-subtle:rgba(0,0,0,0.025);--surface-subtle-hover:rgba(0,0,0,0.05);
+    --border-subtle:rgba(0,0,0,0.08);--border-muted:rgba(0,0,0,0.14);
+  }
+  :root.dark[data-skin="matte"]{
+    /* Dark: near-pure-black canvas. #0A0A0A (not #000) softens OLED so
+       white text doesn't bloom. The deeper #050505 on the sidebar lets
+       the chrome layer recede further than the chat canvas — subtle
+       hierarchy entirely in monochrome. Accent stays #F59E0B (amber)
+       for visibility on the very dark bg. */
+    --bg:#0A0A0A;--sidebar:#050505;--surface:#141414;
+    --border:#222222;--border2:#333333;
+    --text:#E5E5E5;--muted:#8A8A8A;--strong:#FAFAFA;--em:#BFBFBF;
+    --accent:#F59E0B;--accent-hover:#D97706;--accent-text:#F59E0B;
+    --accent-bg:rgba(245,158,11,0.10);--accent-bg-strong:rgba(245,158,11,0.22);
+    --code-bg:#0F0F0F;--code-inline-bg:rgba(255,255,255,0.07);--code-text:#F59E0B;--pre-text:#E5E5E5;
+    --topbar-bg:rgba(5,5,5,0.96);--main-bg:rgba(10,10,10,0.55);
+    --input-bg:rgba(255,255,255,0.04);--hover-bg:rgba(255,255,255,0.06);
+    --focus-ring:rgba(245,158,11,0.32);--focus-glow:rgba(245,158,11,0.10);
+    --error:#EF4444;--warning:#F59E0B;--success:#22C55E;--info:#3B82F6;
+    --blue:#3B82F6;--gold:#F59E0B;
+    --user-bubble-bg:#141414;--user-bubble-border:#222222;
+    --user-bubble-text:#E5E5E5;--user-bubble-placeholder:#8A8A8A;
+    --user-selection-bg:rgba(245,158,11,0.30);--user-selection-text:#FAFAFA;
+    --surface-subtle:rgba(255,255,255,0.025);--surface-subtle-hover:rgba(255,255,255,0.05);
+    --border-subtle:rgba(255,255,255,0.07);--border-muted:rgba(255,255,255,0.14);
+  }
+  /* ── Matte skin: component-level overrides ────────────────────────────── */
+  /* New-chat button: solid amber on both modes. Off-white text on amber
+     reads cleanly because amber's chroma is high but its luminance fits
+     between white and the dark bg. */
+  :root[data-skin="matte"]:not(.dark) .new-chat-btn,
+  :root.dark[data-skin="matte"] .new-chat-btn{
+    background:var(--accent);border-color:var(--accent);
+    color:#FAFAFA;font-weight:500;
+    box-shadow:0 1px 2px rgba(0,0,0,0.10);
+  }
+  :root[data-skin="matte"]:not(.dark) .new-chat-btn:hover,
+  :root.dark[data-skin="matte"] .new-chat-btn:hover{
+    background:var(--accent-hover);border-color:var(--accent-hover);color:#FAFAFA;
+  }
+  /* Tool / thinking cards: monochrome borders with a very subtle amber tint.
+     Keep these visually quiet — they're meta-content, shouldn't compete
+     with the message text. */
+  :root[data-skin="matte"] .tool-card{
+    background:rgba(255,255,255,0.02);
+    border-color:var(--border);border-radius:8px;
+    padding:12px 14px;
+  }
+  :root[data-skin="matte"]:not(.dark) .tool-card{background:rgba(0,0,0,0.02);}
+  :root[data-skin="matte"] .tool-card:hover{border-color:var(--border2);}
+  :root[data-skin="matte"] .tool-card-running{background:var(--accent-bg);border-color:var(--accent-bg-strong);}
+  :root[data-skin="matte"] .tool-card-name{color:var(--muted);font-weight:500;}
+  :root[data-skin="matte"] .tool-arg-key,
+  :root[data-skin="matte"] .tool-card-more{color:var(--accent-text);}
+  :root[data-skin="matte"] .tool-card-running-dot{background:var(--accent);}
+  /* User bubble: subtle surface pill, no saturation. The minimalist
+     aesthetic is the whole point — let the amber accent be the only
+     chromatic element on screen. */
+  :root[data-skin="matte"] .msg-row[data-role="user"] .msg-body{
+    border-radius:12px;padding:11px 15px;
+  }
+  /* Composer: standard rounding — matte is about colour, not geometry */
+  :root[data-skin="matte"] .composer-box{border-radius:14px;}
+  /* Active session: left-bar in amber */
+  :root[data-skin="matte"] .session-item.active{border-left:2px solid var(--accent);}
+  /* Send button glow: amber halo on hover */
+  :root[data-skin="matte"] button.send-btn{box-shadow:0 1px 3px rgba(180,83,9,0.25);}
+  :root[data-skin="matte"] button.send-btn:hover{box-shadow:0 2px 8px rgba(180,83,9,0.40);}
+  :root.dark[data-skin="matte"] button.send-btn{box-shadow:0 1px 3px rgba(245,158,11,0.25);}
+  :root.dark[data-skin="matte"] button.send-btn:hover{box-shadow:0 2px 8px rgba(245,158,11,0.45);}
+  /* Scrollbars: amber thumb on dark, deeper on light. Thin so the
+     matte canvas reads cleaner. */
+  :root[data-skin="matte"]::-webkit-scrollbar-thumb{background:rgba(180,83,9,0.25);border-radius:3px;}
+  :root[data-skin="matte"]::-webkit-scrollbar-thumb:hover{background:rgba(180,83,9,0.40);}
+  :root[data-skin="matte"]{scrollbar-width:thin;scrollbar-color:rgba(180,83,9,0.25) transparent;}
+  :root.dark[data-skin="matte"]::-webkit-scrollbar-thumb{background:rgba(245,158,11,0.25);border-radius:3px;}
+  :root.dark[data-skin="matte"]::-webkit-scrollbar-thumb:hover{background:rgba(245,158,11,0.45);}
+  :root.dark[data-skin="matte"]{scrollbar-width:thin;scrollbar-color:rgba(245,158,11,0.25) transparent;}
+  /* Diff colours: keep semantic green/red but desaturate slightly to
+     fit the matte palette. */
+  :root[data-skin="matte"] .diff-block .diff-plus{color:#16A34A;}
+  :root[data-skin="matte"] .diff-block .diff-minus{color:#DC2626;}
+  :root.dark[data-skin="matte"] .diff-block .diff-plus{color:#22C55E;}
+  :root.dark[data-skin="matte"] .diff-block .diff-minus{color:#EF4444;}
+  /* MCP / session badges pick up the amber accent */
+  :root[data-skin="matte"] .mcp-status-active,
+  :root[data-skin="matte"] .mcp-http{color:var(--accent-text);}
+  :root.dark[data-skin="matte"] .mcp-status-active,
+  :root.dark[data-skin="matte"] .mcp-http{color:var(--accent-text);}
+  :root[data-skin="matte"] .session-child-count,
+  :root[data-skin="matte"] .session-tree-badge,
+  :root[data-skin="matte"] .session-tag{background:var(--accent-bg);color:var(--accent-text);}
+  :root[data-skin="matte"] .session-child-count:hover{background:var(--accent-bg-strong);color:var(--accent-text);}
+  :root.dark[data-skin="matte"] .session-child-count,
+  :root.dark[data-skin="matte"] .session-tree-badge,
+  :root.dark[data-skin="matte"] .session-tag{background:var(--accent-bg);color:var(--accent-text);}
+  :root.dark[data-skin="matte"] .session-child-count:hover{background:var(--accent-bg-strong);color:var(--accent-text);}
+
   /* #594: app-dialog light mode overrides — base styles use hardcoded dark gradients */
   :root:not(.dark) .app-dialog{
     background:linear-gradient(180deg,rgba(240,237,232,.99),rgba(228,224,216,.99));

@@ -1205,6 +1205,10 @@ const _SKINS=[
   // Sans typography, slightly more generous spacing. The three swatches are the
   // iconic Frost trio (nord8 → nord9 → nord10). See style.css for the full skin.
   {name:'Nord',     colors:['#88C0D0','#81A1C1','#5E81AC']},
+  // Matte — near-pure-black canvas + amber accent (dark) / near-white + deeper
+  // amber (light). Minimalist terminal aesthetic — think i3/tmux-themed Linux
+  // desktop. Three swatches: the amber accent at primary / hover / pressed.
+  {name:'Matte',    colors:['#F59E0B','#D97706','#92400E']},
 ];
 const _VALID_THEMES=new Set((_THEMES||[]).map(t=>t.value));
 const _VALID_SKINS=new Set((_SKINS||[]).map(s=>s.name.toLowerCase()));
