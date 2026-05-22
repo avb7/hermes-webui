@@ -2430,6 +2430,63 @@ def _session_message_merge_key(msg: dict):
     )
 
 
+def _session_message_merge_key_variants(msg: dict) -> set:
+    """Return every dedup key under which this message might appear.
+
+    Sidecar JSON and state.db store the same logical message slightly
+    differently, which can break the simple ``_session_message_merge_key``
+    equality check. Specifically:
+
+    * Sidecar persists timestamps at integer-second precision while
+      state.db keeps the full fractional value (so ``ts=1779476644`` in the
+      sidecar and ``ts=1779476644.78957`` in state.db represent the same
+      row).
+    * Some sidecar rows are written without a timestamp at all
+      (``ts=None``) while the state.db copy has a real value.
+
+    Without recognising both shapes, ``merge_session_messages_append_only``
+    appends the entire state.db transcript on top of the sidecar transcript
+    and the whole conversation renders twice in the UI. We emit additional
+    variants so timestamp-precision mismatches collapse correctly while
+    preserving genuine retries that fall in different integer seconds.
+    """
+    key = _session_message_merge_key(msg)
+    if not (isinstance(key, tuple) and key and key[0] == "legacy"):
+        return {key}
+    role, content, _ts_part, tool_call_id, tool_name = key[1], key[2], key[3], key[4], key[5]
+    variants = {key}
+    ts = _message_timestamp_as_float(msg)
+    if ts is not None:
+        int_ts = str(int(ts))
+        frac_ts = ("%.6f" % ts).rstrip("0").rstrip(".")
+        variants.add(("legacy", role, content, int_ts, tool_call_id, tool_name))
+        variants.add(("legacy", role, content, frac_ts, tool_call_id, tool_name))
+    else:
+        # No timestamp recorded on this row — also remember a content-only
+        # ("notime") key so a state.db copy carrying the real timestamp can
+        # still match.
+        variants.add(("legacy_notime", role, content, tool_call_id, tool_name))
+    return variants
+
+
+def _session_message_merge_lookup_keys(msg: dict) -> set:
+    """Dedup keys used to look up whether ``msg`` is already in ``seen``.
+
+    Identical to :func:`_session_message_merge_key_variants` but additionally
+    emits the content-only ``legacy_notime`` variant for legacy messages
+    that *do* carry a timestamp. This lets a state.db row with a real
+    timestamp match a sidecar row that was written without one without
+    polluting ``seen`` (which could otherwise over-collapse genuinely new
+    messages that happen to share role/content).
+    """
+    keys = set(_session_message_merge_key_variants(msg))
+    base = _session_message_merge_key(msg)
+    if isinstance(base, tuple) and base and base[0] == "legacy":
+        role, content, _ts_part, tool_call_id, tool_name = base[1], base[2], base[3], base[4], base[5]
+        keys.add(("legacy_notime", role, content, tool_call_id, tool_name))
+    return keys
+
+
 def merge_session_messages_append_only(sidecar_messages: list, state_messages: list) -> list:
     """Merge sidecar/context and state.db messages without deleting local rows."""
     sidecar_messages = list(sidecar_messages or [])
@@ -2446,18 +2503,19 @@ def merge_session_messages_append_only(sidecar_messages: list, state_messages: l
         timestamp = _message_timestamp_as_float(msg)
         if timestamp is not None:
             max_sidecar_timestamp = timestamp if max_sidecar_timestamp is None else max(max_sidecar_timestamp, timestamp)
-        key = _session_message_merge_key(msg)
-        seen_message_keys.add(key)
+        seen_message_keys.update(_session_message_merge_key_variants(msg))
         merged_messages.append(msg)
     for msg in state_messages:
         timestamp = _message_timestamp_as_float(msg)
         key = _session_message_merge_key(msg)
+        variants = _session_message_merge_key_variants(msg)
+        already_seen = bool(_session_message_merge_lookup_keys(msg) & seen_message_keys)
         if max_sidecar_timestamp is not None and timestamp is not None and timestamp <= max_sidecar_timestamp:
-            if key in seen_message_keys:
+            if already_seen:
                 continue
             if not (isinstance(key, tuple) and key[:1] == ("message_id",)):
                 continue
-        if key in seen_message_keys:
+        if already_seen:
             continue
         # State rows at or before the newest sidecar timestamp are normally
         # assumed to have already been observed by the sidecar. The <= gate
@@ -2472,7 +2530,7 @@ def merge_session_messages_append_only(sidecar_messages: list, state_messages: l
             and timestamp <= max_sidecar_timestamp
         ):
             continue
-        seen_message_keys.add(key)
+        seen_message_keys.update(variants)
         merged_messages.append(msg)
     return merged_messages
 
