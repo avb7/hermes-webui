@@ -1835,14 +1835,14 @@
     .messages-inner{padding:12px 10px 20px;}
     .msg-body{padding-left:0;max-width:100%;}
     .msg-role{font-size:12px;}
-    /* padding-bottom = 12px + env(safe-area-inset-bottom). With
-       viewport-fit=cover the page extends behind the iOS home indicator;
-       without this padding the composer's bottom edge sits at the page
-       bottom, leaving a visible band of body background below it
-       (~34px tall on Dynamic Island devices) — the "gap below the
-       input" the user reported. The +12 keeps the existing visual
-       padding above the indicator area. */
-    .composer-wrap{padding:8px 10px calc(12px + env(safe-area-inset-bottom,0px))!important;}
+    /* padding-bottom = max(12px, env(safe-area-inset-bottom)). The
+       earlier (12 + env) added BOTH together, producing a visibly
+       empty 46px-tall band below the composer-box. With max() instead,
+       env(34px home indicator) takes over on notched iOS so the
+       composer-box bottom edge sits flush against the home indicator
+       safe area — no visible empty band — while non-iOS keeps the
+       original 12px visual padding. */
+    .composer-wrap{padding:8px 10px max(12px,env(safe-area-inset-bottom,0px))!important;}
     .composer-box{border-radius:12px;}
     .composer-box textarea{min-height:40px;}
     .composer-footer{padding:6px 8px 8px!important;gap:6px;flex-wrap:nowrap;align-items:center;}
