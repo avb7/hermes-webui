@@ -1835,7 +1835,14 @@
     .messages-inner{padding:12px 10px 20px;}
     .msg-body{padding-left:0;max-width:100%;}
     .msg-role{font-size:12px;}
-    .composer-wrap{padding:8px 10px 12px!important;}
+    /* padding-bottom = 12px + env(safe-area-inset-bottom). With
+       viewport-fit=cover the page extends behind the iOS home indicator;
+       without this padding the composer's bottom edge sits at the page
+       bottom, leaving a visible band of body background below it
+       (~34px tall on Dynamic Island devices) — the "gap below the
+       input" the user reported. The +12 keeps the existing visual
+       padding above the indicator area. */
+    .composer-wrap{padding:8px 10px calc(12px + env(safe-area-inset-bottom,0px))!important;}
     .composer-box{border-radius:12px;}
     .composer-box textarea{min-height:40px;}
     .composer-footer{padding:6px 8px 8px!important;gap:6px;flex-wrap:nowrap;align-items:center;}
@@ -1889,7 +1896,14 @@
     .composer-terminal-action{padding:5px 7px;font-size:10px;white-space:nowrap;}
     #terminalWorkspaceLabel{max-width:110px;}
     #terminalDockWorkspaceLabel{max-width:96px;}
-    .sidebar-nav{position:absolute;left:0;top:0;bottom:0;width:52px;display:flex;flex-direction:column;gap:4px;padding:8px 4px;border-right:1px solid var(--border);border-bottom:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
+    /* THIS rule overrides the parent .sidebar's padding-top because
+       position:absolute sits at the parent's *border-box* edge (not the
+       inside of its padding). Without the explicit top offset, the chat
+       icon at the top of the rail renders behind the iOS status bar even
+       though the sidebar itself has padding-top: env+10. We mirror the
+       same safe-area math here so the first rail icon sits ~10px below
+       the status-bar text on notched iPhones. */
+    .sidebar-nav{position:absolute;left:0;top:calc(var(--app-titlebar-safe-top) + 10px);bottom:env(safe-area-inset-bottom,0);width:52px;display:flex;flex-direction:column;gap:4px;padding:8px 4px;border-right:1px solid var(--border);border-bottom:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
     .sidebar-nav .nav-tab{flex:0 0 44px;width:44px;min-width:44px;min-height:44px;padding:0;border-bottom:0;border-radius:10px;}
     .sidebar-nav .nav-tab svg{width:20px;height:20px;}
     .sidebar-nav .nav-tab.active{background:var(--accent-bg);}
