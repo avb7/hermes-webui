@@ -2221,7 +2221,6 @@ from api.models import (
     get_cli_sessions,
     get_cli_session_messages,
     get_state_db_session_messages,
-    get_state_db_session_summary,
     merge_session_messages_append_only,
     ensure_cron_project,
     is_cron_session,
@@ -3669,16 +3668,29 @@ def handle_get(handler, parsed) -> bool:
             is_messaging_session = _is_messaging_session_record(s) or _is_messaging_session_record(cli_meta)
             cli_messages = []
             state_db_messages = []
-            state_db_summary = {}
             if is_messaging_session:
                 cli_messages = get_cli_session_messages(sid)
-            elif load_messages:
+            else:
+                # Materialize state.db messages on BOTH the load_messages=True
+                # (full render) and load_messages=False (poll probe) paths so
+                # the message_count and last_message_at we return are computed
+                # from the *same* merge in both cases.
+                #
+                # The previous "cheap summary" optimization read a raw
+                # ``SELECT COUNT(*)`` from state.db and reported
+                # ``max(sidecar_count, raw_state_count)`` on the poll path,
+                # while the full path reported ``len(merge(sidecar, state))``.
+                # When the merge correctly dedupes rows that exist in both
+                # stores (after the timestamp-precision-tolerant fix in
+                # api/models.py) those two numbers DIVERGE: the raw count
+                # double-counts deduped rows, the merged count doesn't.
+                #
+                # The WebUI's external-refresh poll compares the poll count
+                # against the count it stored after the last full load, sees
+                # a permanent ``remote > local`` delta, and spins a full
+                # reload every 5 seconds forever. Doing the same fetch on
+                # both paths is ~2ms more per poll and eliminates the loop.
                 state_db_messages = get_state_db_session_messages(sid)
-            elif not is_messaging_session:
-                # Metadata-only callers (frontend refresh polling) only need a
-                # cheap staleness signal. Avoid full transcript materialization
-                # on the steady-state polling path.
-                state_db_summary = get_state_db_session_summary(sid)
             _t2 = _time.monotonic()
             effective_model = (
                 _resolve_effective_session_model_for_display(s)
@@ -3709,22 +3721,32 @@ def handle_get(handler, parsed) -> bool:
                     _all_msgs = merge_session_messages_append_only(cli_messages, sidecar_messages)
                 else:
                     _all_msgs = merge_session_messages_append_only(getattr(s, "messages", []) or [], state_db_messages)
-            if not load_messages and state_db_summary:
+            if not load_messages and not is_messaging_session:
+                # Compute the staleness summary from the SAME merge the
+                # load_messages=True path uses so the WebUI poll's count
+                # comparison can never disagree with itself across requests
+                # against the same session state. ``_all_msgs`` remains the
+                # raw sidecar list because the response body for
+                # ``messages=0`` doesn't ship the materialized messages
+                # anyway — only the summary count/last_message_at do.
                 sidecar_messages = getattr(s, "messages", []) or []
-                sidecar_count = len(sidecar_messages)
-                try:
-                    sidecar_last = max(
-                        float((m or {}).get("timestamp") or 0)
-                        for m in sidecar_messages
-                        if isinstance(m, dict)
-                    ) if sidecar_messages else 0
-                except (TypeError, ValueError):
-                    sidecar_last = 0
-                state_count = int(state_db_summary.get("message_count") or 0)
-                state_last = float(state_db_summary.get("last_message_at") or 0)
+                merged_for_summary = merge_session_messages_append_only(
+                    sidecar_messages, state_db_messages
+                )
                 _all_msgs = sidecar_messages
-                _summary_message_count = max(sidecar_count, state_count)
-                _summary_last_message_at = max(sidecar_last, state_last)
+                _summary_message_count = len(merged_for_summary)
+                try:
+                    _summary_last_message_at = (
+                        max(
+                            float((m or {}).get("timestamp") or 0)
+                            for m in merged_for_summary
+                            if isinstance(m, dict)
+                        )
+                        if merged_for_summary
+                        else 0
+                    )
+                except (TypeError, ValueError):
+                    _summary_last_message_at = 0
             else:
                 _summary_message_count = None
                 _summary_last_message_at = None
