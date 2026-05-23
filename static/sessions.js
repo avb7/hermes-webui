@@ -2082,6 +2082,18 @@ async function refreshActiveSessionIfExternallyUpdated(reason){
     if(!data || !data.session) return;
     if(!S.session || S.session.session_id !== sid) return;
     if(S.busy || S.activeStreamId) return;
+    // Don't fire a full reload from THIS poll while the session is being
+    // actively streamed on the server. The stream legitimately writes new
+    // rows to state.db every few hundred ms, which bumps message_count
+    // and last_message_at on every 5s probe — without this bail-out, the
+    // poll triggers loadSession() every 5 seconds for the entire duration
+    // of the stream. The server-side active_stream_id check catches the
+    // case where the local frontend lost track of the stream (e.g. fresh
+    // tab with no INFLIGHT localStorage entry to re-attach from); the
+    // earlier S.activeStreamId check above already handles the case where
+    // we know about the stream locally. Streams that end will clear
+    // active_stream_id and the next poll will pick up any final delta.
+    if(data.session.active_stream_id) return;
     const remoteCount = Number(data.session.message_count || 0);
     const remoteLast = Number(data.session.last_message_at || data.session.updated_at || 0);
     if(remoteCount > localCount || remoteLast > localLast){
