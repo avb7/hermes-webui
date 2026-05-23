@@ -2075,7 +2075,15 @@ async function refreshActiveSessionIfExternallyUpdated(reason){
   if(typeof document !== 'undefined' && document.hidden) return;
   const sid = S.session.session_id;
   const localCount = Number(S.session.message_count || (Array.isArray(S.messages)?S.messages.length:0) || 0);
-  const localLast = Number(S.session.last_message_at || S.session.updated_at || 0);
+  // Only ``last_message_at`` is a valid signal for "new conversation
+  // content arrived"; ``updated_at`` is bumped by every ``s.save()`` on
+  // the server, including ones triggered by UI-only side effects like
+  // the composer draft auto-save (POST /api/session/draft, debounced
+  // ~400ms per keystroke). Using updated_at here means every keystroke
+  // in the composer eventually trips the 5s poll into firing a full
+  // session reload — see commit history for the four-layer regression
+  // that finally landed on this fix.
+  const localLast = Number(S.session.last_message_at || 0);
   _activeSessionExternalRefreshInFlight = true;
   try{
     const data = await api(`/api/session?session_id=${encodeURIComponent(sid)}&messages=0&resolve_model=0`);
@@ -2095,7 +2103,9 @@ async function refreshActiveSessionIfExternallyUpdated(reason){
     // active_stream_id and the next poll will pick up any final delta.
     if(data.session.active_stream_id) return;
     const remoteCount = Number(data.session.message_count || 0);
-    const remoteLast = Number(data.session.last_message_at || data.session.updated_at || 0);
+    // Same updated_at exclusion as localLast above — must not let
+    // metadata-only bumps trigger a full reload.
+    const remoteLast = Number(data.session.last_message_at || 0);
     if(remoteCount > localCount || remoteLast > localLast){
       await loadSession(sid, {force:true, externalRefreshReason:reason||'poll'});
       if(typeof renderSessionList==='function') void renderSessionList();
